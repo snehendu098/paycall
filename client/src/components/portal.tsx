@@ -213,6 +213,7 @@ export function PDialog({
 const tabs = [
   { href: '/app/spend', label: 'Spend' },
   { href: '/app/earn', label: 'Earn' },
+  { href: '/app/catalog', label: 'Catalog' },
 ]
 
 /** Portal nav: tabs left (animated underline), wordmark centre, user menu right. */

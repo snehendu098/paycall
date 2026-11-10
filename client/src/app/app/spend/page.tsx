@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { $, toDollars, toMicros } from '@/lib/api'
+import { $, ago, toDollars, toMicros } from '@/lib/api'
 import { enable, pc } from '@/lib/pc'
 import { Btn, Input } from '@/components/ds'
 import { Activity, LiveDot, useLedger } from '@/components/activity'
@@ -52,6 +52,8 @@ function Spend() {
 
   return (
     <Page>
+      <Approvals onDecided={me.reload} />
+
       <section className="grid gap-10 md:grid-cols-[1fr_320px] md:items-end">
         <div className="min-w-0">
           <h1 className="text-sm text-muted-foreground">Balance</h1>
@@ -92,6 +94,61 @@ function Spend() {
         <Activity role="buyer" rows={rows} fresh={fresh} names={names} />
       </Block>
     </Page>
+  )
+}
+
+type Approval = { id: number; amount: number; resource: string; createdAt: string; agentName: string; agentPubkey: string; sellerId: string; sellerName: string }
+
+/** Pending over-limit calls; hidden when none. Polls 3s while tab visible. */
+function Approvals({ onDecided }: { onDecided: () => void }) {
+  const q = useApi<Approval[]>('buyer', 'approvals')
+  const [busy, setBusy] = useState<number>()
+  useEffect(() => {
+    // ponytail: 3s poll, push via SSE if latency matters
+    const t = setInterval(() => document.visibilityState === 'visible' && q.reload(), 3000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function decide(a: Approval, approve: boolean) {
+    setBusy(a.id)
+    try {
+      await pc('buyer', `approvals/${a.id}`, { body: { approve } })
+      toast.success(approve ? `Approved ${$(a.amount)}` : 'Denied', { description: approve ? `${a.agentName} can retry the call now` : undefined })
+      onDecided()
+    } catch (e) {
+      toast.error("Couldn't decide", { description: errMsg(e) })
+    } finally {
+      setBusy(undefined)
+      q.reload()
+    }
+  }
+
+  if (!q.data?.length) return null
+  return (
+    <section data-testid="approvals" className="border border-live/40 bg-card p-4 sm:p-5">
+      <h2 className="flex items-center gap-2 text-sm text-live">
+        <span aria-hidden className="pc-pulse size-1.5 bg-live" />
+        {q.data.length} call{q.data.length > 1 && 's'} waiting for approval
+      </h2>
+      <ul className="mt-3">
+        {q.data.map((a) => (
+          <li key={a.id} className="flex flex-col gap-3 border-t border-border py-3.5 first:border-t-0 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">{a.agentName} <span className="text-muted-foreground">→</span> {a.sellerName}</span>
+                <span className="shrink-0 font-mono">{$(a.amount)}</span>
+              </div>
+              <div className="truncate font-mono text-xs text-muted-foreground" title={a.resource} suppressHydrationWarning>{a.resource} · {ago(a.createdAt)}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <Act disabled={busy === a.id} onClick={() => decide(a, false)}>Deny</Act>
+              <Act primary disabled={busy === a.id} onClick={() => decide(a, true)}>Approve</Act>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
