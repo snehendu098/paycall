@@ -8,6 +8,8 @@ import { mcpHandler } from './mcp'
 import { settleAll } from './payouts'
 import { adminRoute } from './routes/admin.route'
 import { agentRoute } from './routes/agent.route'
+import { approvalRoute } from './routes/approval.route'
+import { search as catalog } from './controllers/catalog.controller'
 import { channelRoute } from './routes/channel.route'
 import { deviceRoute } from './routes/device.route'
 import { endpointRoute } from './routes/endpoint.route'
@@ -49,6 +51,8 @@ const app = new Hono<AppEnv>()
   .route('/device', deviceRoute)
   .get('/authorize', ...authorize)
   .route('/oauth', oauthRoute)
+  .route('/approvals', approvalRoute)
+  .get('/catalog', ...catalog)
   .route('/p', proxyRoute)
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)

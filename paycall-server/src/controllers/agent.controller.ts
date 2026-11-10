@@ -19,7 +19,15 @@ export const create = factory.createHandlers(
 )
 
 export const update = factory.createHandlers(
-  zValidator('json', z.object({ paused: z.boolean(), maxPrice: zMicros }).partial()),
+  zValidator('json', z
+      .object({
+        paused: z.boolean(),
+        maxPrice: zMicros,
+        dailyCap: zMicros.nullable(),
+        approveAbove: zMicros.nullable(),
+        allowedSellers: z.array(z.string().min(1).max(64)).max(100).nullable(),
+      })
+      .partial()),
   async (c) => {
     const [agent] = await c.var.db
       .update(agents)

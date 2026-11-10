@@ -33,7 +33,7 @@ const b64 = (o: unknown) => btoa(JSON.stringify(o))
 const unb64 = (s: string | null) => JSON.parse(atob(s!))
 
 beforeEach(async () => {
-  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints cascade`)
+  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints, approvals cascade`)
   await db.insert(owners).values({ id: 'own_1', email: 'o@x.io', apiKeyHash: 'h1', balance: 25_000, dailyCap: 1_000_000 })
   await db.insert(agents).values({ pubkey, ownerId: 'own_1', name: 'bot' })
   await db.insert(sellers).values({ id: 'sel_1', name: 'DataMart', paypalEmail: 's@x.io', apiKeyHash: 'h2' })

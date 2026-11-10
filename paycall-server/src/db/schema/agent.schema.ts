@@ -8,5 +8,8 @@ export const agents = pgTable('agents', {
   name: text().notNull(),
   paused: boolean().notNull().default(false),
   maxPrice: micros().notNull().default(1_000_000),
+  dailyCap: micros(), // null = owner cap only
+  approveAbove: micros(), // calls priced above → human approval
+  allowedSellers: text().array(), // null = any seller
   createdAt: createdAt(),
 })

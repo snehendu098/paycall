@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { McpProps } from './controllers/oauth.controller'
 import { connect } from './db'
 import { agents, entries, owners } from './db/schema'
+import { searchCatalog } from './controllers/catalog.controller'
 import { toDollars } from './lib/util'
 
 type App = { fetch: (req: Request, env: CloudflareBindings, ctx: ExecutionContext) => Response | Promise<Response> }
@@ -19,12 +20,15 @@ const REASONS: Record<string, string> = {
   unknown_payer: 'this agent was removed: reconnect PayCall (/mcp → paycall → Authenticate)',
   stale_voucher: 'payment channel out of sync: retry the call',
   voucher_expired: 'voucher expired (clock skew?): retry the call',
+  seller_not_allowed: "this seller is not in the agent's allowlist: allow it in the PayCall dashboard",
+  agent_daily_cap_exceeded: "this agent's daily cap reached: raise it in the PayCall dashboard or wait until tomorrow",
+  approval_required: 'price is above the approval threshold: the user must approve it in the PayCall dashboard (Spend → Approvals), then retry the same call',
 }
 const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], isError })
 const usd = (m: number) => `$${toDollars(m)}`
 
-function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>, env: CloudflareBindings) {
-  const s = new McpServer({ name: 'paycall', version: '0.2.0' })
+function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>, env: CloudflareBindings, origin: string) {
+  const s = new McpServer({ name: 'paycall', version: '0.3.0' })
 
   s.registerTool(
     'paid_fetch',
@@ -51,6 +55,24 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
       const b = await res.text()
       lines.push('', b.length > MAX_BODY ? `${b.slice(0, MAX_BODY)}\n…[truncated, ${b.length} chars total]` : b)
       return text(lines.join('\n'), !res.ok)
+    },
+  )
+
+  s.registerTool(
+    'search_paid_apis',
+    {
+      description: 'Search the PayCall catalog of paid APIs (name, description, price per call, URL). Call the returned URL with paid_fetch.',
+      inputSchema: z.object({ query: z.string().max(100).optional().describe('keywords, e.g. "weather" or "flights"; empty = newest') }),
+    },
+    async ({ query }) => {
+      const { db, close } = await connect(env.HYPERDRIVE.connectionString)
+      try {
+        const rows = await searchCatalog(db, origin, query)
+        if (!rows.length) return text(`no paid APIs match "${query ?? ''}"`)
+        return text(rows.map((r) => `${r.name} (${r.seller}) ${usd(r.price)}/call${r.category ? ` [${r.category}]` : ''}\n  ${r.url}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
+      } finally {
+        await close()
+      }
     },
   )
 
@@ -91,6 +113,6 @@ export const mcpHandler = (app: App) => ({
     }) as typeof fetch
     const agent = await createAgent(props.privateKey, { fetch: f })
     // ponytail: handler + server built per request (stateless, cheap); cache if profiling says so
-    return createMcpHandler(() => server(props, agent, env))(req, env, ctx)
+    return createMcpHandler(() => server(props, agent, env, self))(req, env, ctx)
   },
 })

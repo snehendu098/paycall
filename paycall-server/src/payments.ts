@@ -1,7 +1,7 @@
 import { and, eq, gte, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { DB } from './db'
-import { agents, channels, entries, owners } from './db/schema'
+import { agents, approvals, channels, entries, owners } from './db/schema'
 import { Micros, Voucher, verifyVoucher } from './lib/voucher'
 
 export const SCHEME = 'paycall-prepaid'
@@ -33,7 +33,7 @@ const sameTerms = (a: Requirements, b: Requirements) =>
   a.scheme === b.scheme && a.network === b.network && a.amount === b.amount && a.asset === b.asset && a.payTo === b.payTo
 
 // read-only, x402 /verify
-export async function checkPayment(db: DB, sellerId: string, { paymentPayload, paymentRequirements: req }: PaymentBody) {
+export async function checkPayment(db: DB, sellerId: string, { paymentPayload, paymentRequirements: req }: PaymentBody, resource = '') {
   const v = paymentPayload.payload
   const amount = Number(req.amount)
 
@@ -52,6 +52,7 @@ export async function checkPayment(db: DB, sellerId: string, { paymentPayload, p
   const { agent, owner } = row
   if (agent.paused) return fail('agent_paused')
   if (amount > agent.maxPrice) return fail('price_above_agent_limit')
+  if (agent.allowedSellers && !agent.allowedSellers.includes(sellerId)) return fail('seller_not_allowed')
 
   const [ch] = await db
     .select()
@@ -68,8 +69,25 @@ export async function checkPayment(db: DB, sellerId: string, { paymentPayload, p
     .where(and(eq(entries.ownerId, owner.id), eq(entries.type, 'charge'), gte(entries.createdAt, sql`date_trunc('day', now())`)))
   // ponytail: cap checked outside tx, parallel calls can overshoot by one call. balance never can.
   if (spent + amount > owner.dailyCap) return fail('daily_cap_exceeded')
+  if (agent.dailyCap !== null) {
+    const [{ agentSpent }] = await db
+      .select({ agentSpent: sql<number>`coalesce(sum(${entries.amount}), 0)`.mapWith(Number) })
+      .from(entries)
+      .where(and(eq(entries.agentPubkey, agent.pubkey), eq(entries.type, 'charge'), gte(entries.createdAt, sql`date_trunc('day', now())`)))
+    if (agentSpent + amount > agent.dailyCap) return fail('agent_daily_cap_exceeded')
+  }
 
-  return { ok: true as const, voucher: v, amount, owner }
+  const needsApproval = agent.approveAbove !== null && amount > agent.approveAbove
+  if (needsApproval) {
+    const match = and(eq(approvals.agentPubkey, agent.pubkey), eq(approvals.sellerId, sellerId), eq(approvals.amount, amount))
+    const [ok] = await db.select({ id: approvals.id }).from(approvals).where(and(match, eq(approvals.status, 'approved'))).limit(1)
+    if (!ok) {
+      await db.insert(approvals).values({ ownerId: owner.id, agentPubkey: agent.pubkey, sellerId, amount, resource }).onConflictDoNothing()
+      return fail('approval_required')
+    }
+  }
+
+  return { ok: true as const, voucher: v, amount, owner, needsApproval }
 }
 
 // x402 /settle: one tx, db constraints guard money
@@ -86,6 +104,21 @@ export async function settlePayment(db: DB, sellerId: string, body: PaymentBody)
         .onConflictDoNothing()
         .returning({ id: entries.id })
       if (!entry) throw new Rollback('duplicate_voucher')
+
+      if (check.needsApproval) {
+        // consume one approval atomically, parallel calls can't share it
+        const [used] = await tx
+          .update(approvals)
+          .set({ status: 'used' })
+          .where(
+            eq(
+              approvals.id,
+              sql`(select id from approvals where agent_pubkey = ${v.payer} and seller_id = ${sellerId} and amount = ${amount} and status = 'approved' limit 1 for update skip locked)`,
+            ),
+          )
+          .returning({ id: approvals.id })
+        if (!used) throw new Rollback('approval_required')
+      }
 
       const [debited] = await tx
         .update(owners)

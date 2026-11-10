@@ -16,7 +16,7 @@ const get = (path: string, key: string, as?: string) =>
   worker.fetch(new Request(`http://localhost${path}`, { headers: { authorization: `Bearer ${key}`, ...(as && { 'x-paycall-as': as }) } }), env, ctx)
 
 beforeEach(async () => {
-  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints cascade`)
+  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints, approvals cascade`)
   await db.insert(owners).values({ id: 'own_1', email: 'o@x.io', apiKeyHash: 'h1' })
   await db.insert(sellers).values({ id: 'sel_1', name: 'S', paypalEmail: 's@x.io', apiKeyHash: 'h2' })
 })

@@ -52,7 +52,7 @@ export const forward = factory.createHandlers(async (c) => {
   if (!parsed.success) return paymentRequired(c, 'invalid_payload', requirements)
   const body: PaymentBody = { x402Version: 2, paymentPayload: parsed.data, paymentRequirements: requirements }
 
-  const check = await checkPayment(c.var.db, ep.sellerId, body)
+  const check = await checkPayment(c.var.db, ep.sellerId, body, c.req.url)
   if (!check.ok) return paymentRequired(c, check.reason, requirements)
 
   const headers = new Headers()

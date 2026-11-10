@@ -67,7 +67,7 @@ async function tool(at: string, name: string, args: Record<string, unknown> = {}
 
 beforeEach(async () => {
   store.clear()
-  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints cascade`)
+  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints, approvals cascade`)
   await db.insert(owners).values({ id: 'own_1', email: 'o@x.io', apiKeyHash: 'h1', balance: 25_000, dailyCap: 1_000_000 })
   await db.insert(sellers).values({ id: 'sel_1', name: 'Wx', paypalEmail: 's@x.io', apiKeyHash: 'h2' })
   await db.insert(endpoints).values({ id: 'ep_1', sellerId: 'sel_1', name: 'wx', upstreamUrl: `http://localhost:${upstream.port}`, price: 10_000 })
@@ -107,6 +107,10 @@ test('oauth → consent → token → paid_fetch pays proxy via voucher; wallet_
   const r3 = await tool(at, 'paid_fetch', { url: `${O}/p/ep_1/today` })
   expect(r3.isError).toBe(true)
   expect(r3.content[0].text).toContain('insufficient balance')
+
+  const sr = await tool(at, 'search_paid_apis', { query: 'wx' })
+  expect(sr.content[0].text).toContain(`${O}/p/ep_1`)
+  expect(sr.content[0].text).toContain('$0.01/call')
 
   const w = await tool(at, 'wallet_info')
   expect(w.content[0].text).toContain('balance: $0.01')

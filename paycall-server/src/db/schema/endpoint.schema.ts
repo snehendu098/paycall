@@ -9,5 +9,7 @@ export const endpoints = pgTable('endpoints', {
   name: text().notNull(),
   upstreamUrl: text().notNull(),
   price: micros().notNull(),
+  description: text().notNull().default(''),
+  category: text().notNull().default(''),
   createdAt: createdAt(),
 })
