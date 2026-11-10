@@ -81,7 +81,7 @@ test('approval: held → one pending row → approve → one call passes → hel
 
 test('catalog: public search', async () => {
   const all = (await (await fetchW('/catalog')).json()) as { url: string; seller: string }[]
-  expect(all[0]).toMatchObject({ name: 'forecast', price: PRICE, seller: 'WeatherCo', url: 'http://localhost/p/ep_1', category: 'weather' })
+  expect(all[0]).toMatchObject({ name: 'forecast', price: PRICE, seller: 'WeatherCo', sellerId: 'sel_1', url: 'http://localhost/p/ep_1', category: 'weather' })
   expect(await (await fetchW('/catalog?q=FORECAST')).json()).toHaveLength(1)
   expect(await (await fetchW('/catalog?q=weatherco')).json()).toHaveLength(1)
   expect(await (await fetchW('/catalog?q=flights')).json()).toHaveLength(0)
