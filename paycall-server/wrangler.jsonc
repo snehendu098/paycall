@@ -25,7 +25,7 @@
   "vars": {
     "PAYPAL_API": "https://api-m.sandbox.paypal.com",
     "DASHBOARD_ORIGIN": "https://paycall.live",
-    "RESEND_FROM": "PayCall <onboarding@resend.dev>",
+    "RESEND_FROM": "PayCall <login@paycall.live>",
     "FEE_BPS": 200,
     "PAYOUT_MIN_MICROS": 500000
   }
