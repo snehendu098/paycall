@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import { and, eq, gt, sql } from 'drizzle-orm'
 import { agents, endpoints, passes } from '../db/schema'
+import { demo } from '../demo'
 import { refund } from '../ledger'
 import { factory } from '../lib/factory'
 import { cost, countBody, meterStream, type Unit } from '../lib/meter'
@@ -39,7 +40,11 @@ async function upstream(c: Context<AppEnv>, ep: Endpoint, body: ArrayBuffer | un
   // seller keys win over caller's
   if (ep.upstreamHeaders) for (const [k, v] of Object.entries(JSON.parse(await unseal(c.env.BETTER_AUTH_SECRET, ep.upstreamHeaders)) as Record<string, string>)) headers.set(k, v)
   const rest = url.pathname.slice(url.pathname.indexOf(ep.id) + ep.id.length)
-  return fetch(ep.upstreamUrl + rest + url.search, { method: c.req.method, headers, body, signal: AbortSignal.timeout(30_000) })
+  const target = new URL(ep.upstreamUrl + rest + url.search)
+  const init = { method: c.req.method, headers, body, signal: AbortSignal.timeout(30_000) }
+  // own demo upstream: in-process, a worker can't fetch its own hostname
+  if (target.origin === url.origin && target.pathname.startsWith('/demo/')) return demo.fetch(new Request(target.href.replace(`${target.origin}/demo`, target.origin), init))
+  return fetch(target, init)
 }
 
 const requirementsOf = (ep: Endpoint, origin: string) => {

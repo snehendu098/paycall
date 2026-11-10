@@ -7,6 +7,7 @@ import { dashboard } from './dashboard'
 import { connect } from './db'
 import { mcpHandler } from './mcp'
 import { settleAll } from './payouts'
+import { demo } from './demo'
 import { jwks } from './lib/receipt'
 import { adminRoute } from './routes/admin.route'
 import { disputeRoute } from './routes/dispute.route'
@@ -59,6 +60,7 @@ const app = new Hono<AppEnv>()
   .get('/catalog', ...catalog)
   .get('/.well-known/jwks.json', async (c) => c.json(await jwks(c.env.BETTER_AUTH_SECRET), 200, { 'cache-control': 'public, max-age=3600' }))
   .route('/p', proxyRoute)
+  .route('/demo', demo)
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)
     if (pgCode(err) === '23505') return c.json({ error: 'already_exists' }, 409)
