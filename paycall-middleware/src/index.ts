@@ -4,14 +4,22 @@
 import type { MiddlewareHandler } from 'hono'
 import type { RequestHandler } from 'express'
 
-export type PaycallOptions = { apiKey: string; price: string; facilitator?: string }
-type Settle = () => Promise<{ ok: true; header: string } | { ok: false; res: Response }>
+// price: fixed "0.01", or per request (dynamic pricing) e.g. (req) => req.url.includes('/hd') ? '0.05' : '0.01'
+// metered: price is the cap the agent signs; handler sets `x-paycall-charge: <usd>` with what it actually used,
+// the rest is refunded right after settle
+export type PaycallOptions = { apiKey: string; price: string | ((req: Request) => string | Promise<string>); metered?: boolean; facilitator?: string }
+type Settle = (res: Response) => Promise<{ ok: true; header: string } | { ok: false; res: Response }>
+export const CHARGE_HEADER = 'x-paycall-charge'
+const micros = (usd: string) => {
+  const m = Math.round(Number(usd) * 1e6)
+  if (!(m > 0)) throw new Error(`paycall: bad price ${usd}`)
+  return m
+}
 
 const b64json = (o: unknown) => btoa(JSON.stringify(o))
 
-export function paycall({ apiKey, price, facilitator = 'https://api.paycall.live' }: PaycallOptions) {
-  const amount = Math.round(Number(price) * 1e6)
-  if (!(amount > 0)) throw new Error(`paycall: bad price ${price}`)
+export function paycall({ apiKey, price, metered = false, facilitator = 'https://api.paycall.live' }: PaycallOptions) {
+  if (typeof price === 'string') micros(price) // fail fast on bad fixed price
   facilitator = facilitator.replace(/\/$/, '')
 
   const call = (path: string, body?: string) =>
@@ -29,7 +37,10 @@ export function paycall({ apiKey, price, facilitator = 'https://api.paycall.live
     ))
 
   // gate: 402 Response to return as-is, or settle() to call after handler succeeds
-  return async (url: string, sig: string | null | undefined): Promise<Response | Settle> => {
+  return async (req: Request): Promise<Response | Settle> => {
+    const url = req.url
+    const sig = req.headers.get('payment-signature')
+    const amount = micros(typeof price === 'string' ? price : await price(req))
     const requirements = {
       scheme: 'paycall-prepaid',
       network: 'paypal:sandbox',
@@ -37,7 +48,7 @@ export function paycall({ apiKey, price, facilitator = 'https://api.paycall.live
       asset: 'USD',
       payTo: await getSellerId(),
       maxTimeoutSeconds: 60,
-      extra: { facilitator },
+      extra: { facilitator, ...(metered && { pricing: { unit: 'usage', max: String(amount) } }) },
     }
     const required = (error: string) => {
       const pr = { x402Version: 2, error, resource: { url }, accepts: [requirements] }
@@ -57,11 +68,17 @@ export function paycall({ apiKey, price, facilitator = 'https://api.paycall.live
     const check: { isValid: boolean; invalidReason?: string } = await json(v)
     if (!check.isValid) return required(check.invalidReason ?? 'invalid_payment')
 
-    return async () => {
+    return async (res: Response) => {
       const r = await json(await call('/settle', body))
-      return r.success
-        ? { ok: true, header: b64json({ success: true, payer: r.payer, transaction: r.transaction, network: r.network }) }
-        : { ok: false, res: required(r.errorReason ?? 'settle_failed') }
+      if (!r.success) return { ok: false, res: required(r.errorReason ?? 'settle_failed') }
+      let charged = amount
+      const used = res.headers.get(CHARGE_HEADER)
+      if (metered && used !== null) {
+        charged = Math.min(amount, Math.max(0, Math.round(Number(used) * 1e6) || 0))
+        // ponytail: refund failure leaves buyer charged the cap; seller can refund from Earn later
+        if (charged < amount) await call(`/entries/${r.transaction}/refund`, JSON.stringify({ amount: amount - charged })).catch(() => {})
+      }
+      return { ok: true, header: b64json({ success: true, payer: r.payer, transaction: r.transaction, network: r.network, amount: String(charged) }) }
     }
   }
 }
@@ -70,17 +87,18 @@ export function paycall({ apiKey, price, facilitator = 'https://api.paycall.live
 export function withPaycall(handler: (req: Request) => Response | Promise<Response>, opts: PaycallOptions) {
   const gate = paycall(opts)
   return async (req: Request): Promise<Response> => {
-    const g = await gate(req.url, req.headers.get('payment-signature'))
+    const g = await gate(req)
     if (g instanceof Response) return g
     const res = await handler(req)
     if (!res.ok) return res
-    const s = await g()
+    const s = await g(res)
     if (!s.ok) {
       await res.body?.cancel()
       return s.res
     }
     const out = new Response(res.body, res) // handler headers may be immutable
     out.headers.set('PAYMENT-RESPONSE', s.header)
+    out.headers.delete(CHARGE_HEADER)
     return out
   }
 }
@@ -88,15 +106,18 @@ export function withPaycall(handler: (req: Request) => Response | Promise<Respon
 export function paycallHono(opts: PaycallOptions): MiddlewareHandler {
   const gate = paycall(opts)
   return async (c, next) => {
-    const g = await gate(c.req.url, c.req.header('payment-signature'))
+    const g = await gate(c.req.raw)
     if (g instanceof Response) return g
     await next()
     if (!c.res.ok) return
-    const s = await g()
+    const s = await g(c.res)
     if (!s.ok) {
       await c.res.body?.cancel()
       c.res = s.res
-    } else c.header('PAYMENT-RESPONSE', s.header)
+    } else {
+      c.header('PAYMENT-RESPONSE', s.header)
+      c.res.headers.delete(CHARGE_HEADER)
+    }
   }
 }
 
@@ -107,7 +128,8 @@ export function paycallExpress(opts: PaycallOptions): RequestHandler {
   const gate = paycall(opts)
   return async (req, res, next) => {
     try {
-      const g = await gate(`${req.protocol}://${req.get('host')}${req.originalUrl}`, req.get('payment-signature'))
+      // body not needed for pricing/verify; headers are
+      const g = await gate(new Request(`${req.protocol}://${req.get('host')}${req.originalUrl}`, { method: req.method, headers: req.headers as Record<string, string> }))
       if (g instanceof Response) {
         res.status(g.status).set(Object.fromEntries(g.headers)).send(await g.text())
         return
@@ -115,7 +137,9 @@ export function paycallExpress(opts: PaycallOptions): RequestHandler {
       const end = res.end.bind(res) as (...a: unknown[]) => typeof res
       res.end = ((...args: unknown[]) => {
         if (res.statusCode >= 400) return end(...args)
-        g()
+        const charge = res.getHeader(CHARGE_HEADER)
+        res.removeHeader(CHARGE_HEADER)
+        g(new Response(null, { headers: charge === undefined ? {} : { [CHARGE_HEADER]: String(charge) } }))
           .then(async (s) => {
             if (res.headersSent) {
               if (!s.ok) console.error('paycall: settle failed after headers sent', s.res.headers.get('payment-required'))

@@ -92,6 +92,29 @@ for (const [name, base] of [['web', 'http://localhost:8811'], ['hono', 'http://l
 assert.equal(await balance(), 1000000 - 6 * 10000)
 console.log(`ok total: balance ${await balance()} (60000 charged), agent.spent ${agent.spent}`)
 
+// dynamic price + metering: cap depends on path, handler reports actual use, rest refunded
+const metered = Bun.serve({
+  port: 8814,
+  fetch: withPaycall(
+    () => new Response('{"tokens":30}', { headers: { 'content-type': 'application/json', 'x-paycall-charge': '0.003' } }),
+    { ...opts, metered: true, price: (req) => (new URL(req.url).pathname === '/hd' ? '0.05' : '0.02') },
+  ),
+})
+for (const [path, cap] of [['/', 20000], ['/hd', 50000]] as const) {
+  const r0 = await fetch(`http://localhost:8814${path}`)
+  assert.equal(decodePaymentHeader(r0.headers.get('payment-required')).accepts[0].amount, String(cap))
+  await r0.body?.cancel()
+  const before = await balance()
+  const r = await agent.fetch(`http://localhost:8814${path}`)
+  assert.equal(r.status, 200)
+  assert.equal(r.headers.get('x-paycall-charge'), null)
+  assert.equal(decodePaymentHeader(r.headers.get('payment-response')).amount, '3000')
+  await r.body?.cancel()
+  assert.equal(await balance(), before - 3000)
+}
+console.log('ok metered: dynamic cap 0.02/0.05 signed, 0.003 kept, rest refunded')
+
 web.stop()
 hono.stop()
 exSrv.close()
+metered.stop()
