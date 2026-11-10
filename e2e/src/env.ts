@@ -10,4 +10,5 @@ export const env = {
   buyerEmail: need('SANDBOX_PERSONAL_EMAIL'),
   buyerPass: need('SANDBOX_PERSONAL_PASS'),
   headless: process.env.HEADLESS !== '0', // HEADLESS=0 → watch browser
+  payoutMin: 500_000, // = server PAYOUT_MIN_MICROS
 }

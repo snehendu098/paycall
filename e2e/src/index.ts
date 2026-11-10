@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { generateKey } from 'paycall-sdk'
 import { createAgent } from './agent'
 import { api } from './api'
 import { env } from './env'
@@ -21,6 +24,8 @@ async function poll<T>(what: string, fn: () => Promise<T | undefined | false>, t
 
 const PRICE = 500_000 // $0.50 per call
 const TOPUP = 5_000_000 // $5
+const PROXY_PRICE = 10_000 // $0.01 per weather call
+const PROXY_CALLS = 2
 
 console.log(`PayCall e2e → ${env.api}`)
 
@@ -84,24 +89,60 @@ me = await api('GET', '/owners/me', { key: owner.apiKey })
 assert.equal(me.owner.balance, expected, 'webhook double-credited')
 ok(`topup 1, reload 1, charge ${calls}, balance still ${$(me.owner.balance)}`)
 
+step('Claude path: MCP paid_fetch → proxy → Open-Meteo')
+const ep = await api('POST', '/endpoints', {
+  key: seller.apiKey,
+  body: { name: 'weather', upstreamUrl: 'https://api.open-meteo.com/v1/forecast', price: PROXY_PRICE },
+})
+const mcpKey = await generateKey()
+await api('POST', '/agents', { key: owner.apiKey, body: { pubkey: mcpKey.pubkey, name: 'claude' } })
+const unpaid = await fetch(`${env.api}/p/${ep.id}`)
+assert.equal(unpaid.status, 402)
+ok(`unpaid → 402, endpoint ${ep.id}`)
+// spawn real mcp server over stdio, like claude does
+const mcp = new Client({ name: 'e2e', version: '0' })
+await mcp.connect(
+  new StdioClientTransport({
+    command: 'bun',
+    args: ['run', `${import.meta.dir}/../../paycall-mcp/src/index.ts`],
+    env: { ...process.env, PAYCALL_AGENT_KEY: mcpKey.privateKey } as Record<string, string>,
+  }),
+)
+for (let i = 1; i <= PROXY_CALLS; i++) {
+  const r: any = await mcp.callTool({
+    name: 'paid_fetch',
+    arguments: { url: `${env.api}/p/${ep.id}?latitude=52.52&longitude=13.41&current=temperature_2m` },
+  })
+  const text: string = r.content[0].text
+  assert.ok(!r.isError && text.includes('temperature_2m'), `paid_fetch #${i}: ${text.slice(0, 300)}`)
+}
+const wallet: any = await mcp.callTool({ name: 'wallet_info', arguments: {} })
+await mcp.close()
+ok(`${PROXY_CALLS} paid weather calls via MCP; ${wallet.content[0].text.split('\n').at(-1)}`)
+const totalSpent = spent + PROXY_CALLS * PROXY_PRICE
+
 step('seller payout via PayPal Payouts')
-const batchId = await poll('payout batch', async () => (await api('POST', '/admin/settle-now', { key: env.adminKey })).batchId, 30_000)
-ok(`batch ${batchId}`)
+type Payout = { gross: number; net: number; status: string }
+// cron may batch first → judge by seller totals, not settle-now's batchId
 const paid = await poll(
-  'payout SUCCESS',
+  'payouts settled',
   async () => {
     await api('POST', '/admin/settle-now', { key: env.adminKey }) // also polls payout status
     const r = await api('GET', '/sellers/me', { key: seller.apiKey })
-    if (r.payouts[0]?.status === 'failed') throw new Error(`payout failed ${JSON.stringify(r.payouts[0])}`)
-    return r.payouts[0]?.status === 'paid' && r
+    const failed = r.payouts.find((p: Payout) => p.status === 'failed')
+    if (failed) throw new Error(`payout failed ${JSON.stringify(failed)}`)
+    return r.payouts.length > 0 && r.payouts.every((p: Payout) => p.status === 'paid') && r
   },
   180_000,
   10_000,
 )
-const item = paid.payouts[0]
-assert.equal(item.gross, spent)
-assert.equal(paid.owed, 0)
-ok(`paid ${$(item.net)} (gross ${$(item.gross)} − fee ${$(item.gross - item.net)}), owed ${$(paid.owed)}`)
+const gross = paid.payouts.reduce((s: number, p: Payout) => s + p.gross, 0)
+const net = paid.payouts.reduce((s: number, p: Payout) => s + p.net, 0)
+assert.equal(paid.earned, totalSpent)
+assert.equal(paid.seller.paidOut, gross)
+assert.equal(paid.seller.paidOut + paid.owed, paid.earned) // nothing lost, nothing pending
+assert.ok(paid.owed < env.payoutMin, 'owed above payout min but unpaid')
+ok(`paid ${$(net)} (gross ${$(gross)} − fee ${$(gross - net)}) in ${paid.payouts.length} payout(s), owed ${$(paid.owed)} (< min)`)
 
 console.log('\n✅ e2e passed')
 process.exit(0)
