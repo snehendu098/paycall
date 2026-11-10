@@ -2,6 +2,10 @@
 
 Stdio MCP server that lets an AI agent pay for x402 (HTTP 402) APIs from your prepaid PayCall balance.
 
+> Most users don't need this package. Use the hosted server, no install:
+> `claude mcp add --transport http paycall https://paycall-server.silonelabs.workers.dev/mcp`, then `/mcp` → paycall → Authenticate.
+> This local version is for offline/self-run agents and SDK key files.
+
 Tools:
 - `paid_fetch {url, method?, headers?, body?}`: fetches the URL and pays automatically if it answers 402 with `paycall-prepaid`. Returns the status, the amount paid, and the body (cut at 20k chars).
 - `login {name?}`: connects this agent to your PayCall wallet. Returns a URL + code to approve in the browser.
