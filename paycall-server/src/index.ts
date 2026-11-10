@@ -1,13 +1,17 @@
+import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
+import { authorize } from './controllers/oauth.controller'
 import { connect } from './db'
+import { mcpHandler } from './mcp'
 import { settleAll } from './payouts'
 import { adminRoute } from './routes/admin.route'
 import { agentRoute } from './routes/agent.route'
 import { channelRoute } from './routes/channel.route'
 import { deviceRoute } from './routes/device.route'
 import { endpointRoute } from './routes/endpoint.route'
+import { oauthRoute } from './routes/oauth.route'
 import { entryRoute } from './routes/entry.route'
 import { eventRoute } from './routes/event.route'
 import { ownerRoute } from './routes/owner.route'
@@ -43,6 +47,8 @@ const app = new Hono<AppEnv>()
   .route('/endpoints', endpointRoute)
   .route('/channels', channelRoute)
   .route('/device', deviceRoute)
+  .get('/authorize', ...authorize)
+  .route('/oauth', oauthRoute)
   .route('/p', proxyRoute)
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)
@@ -51,7 +57,22 @@ const app = new Hono<AppEnv>()
     return c.json({ error: 'internal_error' }, 500)
   })
 
+const mcp = mcpHandler(app)
+// resource = request origin → same code on wrangler dev + prod
+const provider = (origin: string) =>
+  new OAuthProvider<CloudflareBindings>({
+    apiRoute: '/mcp',
+    apiHandler: mcp,
+    defaultHandler: app,
+    authorizeEndpoint: '/authorize',
+    tokenEndpoint: '/oauth/token',
+    clientRegistrationEndpoint: '/oauth/register',
+    clientIdMetadataDocumentEnabled: true,
+    scopesSupported: ['mcp', 'offline_access'],
+    resourceMetadata: { resource: `${origin}/mcp`, resource_name: 'PayCall' },
+  })
+
 export default {
-  fetch: app.fetch,
+  fetch: (req, env, ctx) => provider(new URL(req.url).origin).fetch(req, env, ctx),
   scheduled: (_ctrl, env, ctx) => ctx.waitUntil(settleAll(env)),
 } satisfies ExportedHandler<CloudflareBindings>

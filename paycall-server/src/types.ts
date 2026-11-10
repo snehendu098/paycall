@@ -1,9 +1,10 @@
+import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
 import type { DB } from './db'
 
 export type Role = 'owner' | 'seller'
 
 export type AppEnv = {
-  Bindings: CloudflareBindings
+  Bindings: CloudflareBindings & { OAUTH_PROVIDER: OAuthHelpers } // injected by OAuthProvider
   Variables: {
     db: DB
     closeDb: () => Promise<void>

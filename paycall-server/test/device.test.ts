@@ -15,7 +15,7 @@ const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: SK, DASHBOA
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
 const call = (method: string, path: string, body?: unknown, as?: string) =>
   worker.fetch(
-    new Request(`http://pc.test${path}`, {
+    new Request(`http://localhost${path}`, {
       method,
       headers: { 'content-type': 'application/json', ...(as && { authorization: `Bearer ${SK}`, 'x-paycall-as': as }) },
       body: body && JSON.stringify(body),

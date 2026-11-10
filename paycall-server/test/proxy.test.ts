@@ -51,7 +51,7 @@ async function voucherHeader(seq: number, cumulative: number) {
 }
 
 const call = (path: string, sig?: string) =>
-  worker.fetch(new Request(`http://pc.test/p/ep_1${path}`, { headers: { authorization: 'Bearer secret', ...(sig && { 'PAYMENT-SIGNATURE': sig }) } }), env, ctx)
+  worker.fetch(new Request(`http://localhost/p/ep_1${path}`, { headers: { authorization: 'Bearer secret', ...(sig && { 'PAYMENT-SIGNATURE': sig }) } }), env, ctx)
 const balance = async () => (await db.select().from(owners).where(eq(owners.id, 'own_1')))[0].balance
 
 test('unpaid → 402 + PAYMENT-REQUIRED', async () => {
@@ -59,7 +59,7 @@ test('unpaid → 402 + PAYMENT-REQUIRED', async () => {
   expect(res.status).toBe(402)
   const pr = unb64(res.headers.get('payment-required'))
   expect(pr.error).toBe('payment_required')
-  expect(pr.accepts[0]).toMatchObject({ scheme: SCHEME, amount: String(PRICE), payTo: 'sel_1', extra: { facilitator: 'http://pc.test' } })
+  expect(pr.accepts[0]).toMatchObject({ scheme: SCHEME, amount: String(PRICE), payTo: 'sel_1', extra: { facilitator: 'http://localhost' } })
   expect(await res.json()).toEqual(pr)
 })
 

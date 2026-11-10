@@ -3,12 +3,14 @@
   "name": "paycall-server",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-09",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"], // strictly_public: oauth cimd client fetch
   "observability": { "enabled": true },
   "triggers": { "crons": ["*/10 * * * *"] },
   "kv_namespaces": [
     // bunx wrangler kv namespace create KV
-    { "binding": "KV", "id": "e2348a5cc64742db8aab7cc0c2e5d07a" }
+    { "binding": "KV", "id": "e2348a5cc64742db8aab7cc0c2e5d07a" },
+    // same namespace, name required by workers-oauth-provider (its keys prefixed, no clash)
+    { "binding": "OAUTH_KV", "id": "e2348a5cc64742db8aab7cc0c2e5d07a" }
   ],
   "hyperdrive": [
     {

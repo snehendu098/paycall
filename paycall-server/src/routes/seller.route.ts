@@ -6,3 +6,4 @@ import type { AppEnv } from '../types'
 export const sellerRoute = new Hono<AppEnv>()
   .post('/', ...seller.create)
   .get('/me', auth('seller'), ...seller.me)
+  .post('/me/key', auth('seller'), ...seller.rotateKey)

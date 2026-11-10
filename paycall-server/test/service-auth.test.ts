@@ -13,7 +13,7 @@ const SK = 'svc_test_key'
 const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: SK } as unknown as CloudflareBindings
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
 const get = (path: string, key: string, as?: string) =>
-  worker.fetch(new Request(`http://pc.test${path}`, { headers: { authorization: `Bearer ${key}`, ...(as && { 'x-paycall-as': as }) } }), env, ctx)
+  worker.fetch(new Request(`http://localhost${path}`, { headers: { authorization: `Bearer ${key}`, ...(as && { 'x-paycall-as': as }) } }), env, ctx)
 
 beforeEach(async () => {
   await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints cascade`)

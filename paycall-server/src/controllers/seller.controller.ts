@@ -25,3 +25,13 @@ export const me = factory.createHandlers(async (c) => {
   const payouts = await db.select().from(payoutItems).where(eq(payoutItems.sellerId, id)).orderBy(desc(payoutItems.createdAt)).limit(20)
   return c.json({ seller, earned, owed: earned - seller.paidOut - seller.pendingPayout, payouts })
 })
+
+// rotate key: old key dies now (cache entry dropped), new key shown once
+export const rotateKey = factory.createHandlers(async (c) => {
+  const id = c.var.principal.id
+  const apiKey = newApiKey('seller')
+  const [old] = await c.var.db.select({ h: sellers.apiKeyHash }).from(sellers).where(eq(sellers.id, id))
+  await c.var.db.update(sellers).set({ apiKeyHash: await sha256(apiKey) }).where(eq(sellers.id, id))
+  if (old) await c.env.KV.delete(`apikey:${old.h}`)
+  return c.json({ apiKey }, 201)
+})
