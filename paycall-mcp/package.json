@@ -1,0 +1,17 @@
+{
+  "name": "paycall-mcp",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "paycall-sdk": "file:../paycall-sdk",
+    "zod": "^4.6.7"
+  }
+}
