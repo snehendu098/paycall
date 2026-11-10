@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { createMiddleware } from 'hono/factory'
 import { HTTPException } from 'hono/http-exception'
+import { timingSafeEqual } from 'hono/utils/buffer'
 import { owners, sellers } from '../db/schema'
 import type { AppEnv, Role } from '../types'
 import { randomId, sha256 } from './util'
@@ -13,6 +14,16 @@ export const auth = (...roles: Role[]) =>
   createMiddleware<AppEnv>(async (c, next) => {
     // ?key= fallback: EventSource can't send headers
     const key = c.req.header('authorization')?.match(/^Bearer (.+)$/)?.[1] ?? c.req.query('key')
+
+    // trusted dashboard bff: service key + act as owner/seller id
+    if (key && c.env.PAYCALL_SERVICE_KEY && (await timingSafeEqual(key, c.env.PAYCALL_SERVICE_KEY))) {
+      const [as, id] = c.req.header('x-paycall-as')?.split(':') ?? []
+      const role = roles.find((r) => r === as)
+      if (!role || !id) throw unauthorized()
+      c.set('principal', { role, id })
+      return next()
+    }
+
     const role = roles.find((r) => key?.startsWith(`pc_${r}_`))
     if (!key || !role) throw unauthorized()
 
