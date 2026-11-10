@@ -1,14 +1,7 @@
-import { googleEnabled } from '@/lib/auth'
 import { AuthForm } from './form'
 
+export const metadata = { title: 'Log in · PayCall' }
+
 export default function Login() {
-  return (
-    <main>
-      <h1>Log in</h1>
-      <AuthForm google={googleEnabled} />
-      <p>
-        No account? <a href="/signup">Sign up</a>
-      </p>
-    </main>
-  )
+  return <AuthForm />
 }

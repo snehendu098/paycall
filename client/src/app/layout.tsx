@@ -14,9 +14,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`dark ${sans.variable} ${mono.variable} h-full antialiased`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`dark ${sans.variable} ${mono.variable} h-full antialiased`}>
       <body className="min-h-full">
-        {/* boundary for useSearchParams (topup/return) */}
+        {/* boundary for request-time hooks */}
         <Suspense fallback={null}>{children}</Suspense>
       </body>
     </html>

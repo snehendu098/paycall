@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // old dashboard urls
+  redirects: async () => [
+    { source: "/buyer", destination: "/app/spend", permanent: true },
+    { source: "/seller", destination: "/app/earn", permanent: true },
+  ],
 };
 
 export default nextConfig;

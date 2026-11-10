@@ -6,6 +6,7 @@ import { settleAll } from './payouts'
 import { adminRoute } from './routes/admin.route'
 import { agentRoute } from './routes/agent.route'
 import { channelRoute } from './routes/channel.route'
+import { deviceRoute } from './routes/device.route'
 import { endpointRoute } from './routes/endpoint.route'
 import { entryRoute } from './routes/entry.route'
 import { eventRoute } from './routes/event.route'
@@ -41,6 +42,7 @@ const app = new Hono<AppEnv>()
   .route('/admin', adminRoute)
   .route('/endpoints', endpointRoute)
   .route('/channels', channelRoute)
+  .route('/device', deviceRoute)
   .route('/p', proxyRoute)
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)

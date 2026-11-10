@@ -189,12 +189,12 @@ export function Panel({ title, aside, children, className, bodyClassName }: { ti
   )
 }
 
-/** Label over a big mono number. */
+/** Mono label over a big light tabular number. */
 export function Stat({ label, value, hint, className, ...rest }: { label: ReactNode; value: ReactNode; hint?: ReactNode; className?: string } & Omit<ComponentProps<'div'>, 'children'>) {
   return (
     <div className={cn('flex flex-col gap-2', className)} {...rest}>
       <span className={mono}>{label}</span>
-      <span className="font-mono text-3xl font-light tracking-tight tabular-nums md:text-4xl">{value}</span>
+      <span className="text-3xl font-light tracking-[-0.03em] tabular-nums md:text-4xl">{value}</span>
       {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
     </div>
   )
