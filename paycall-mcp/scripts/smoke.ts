@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { generateKey } from 'paycall-sdk'
 
-const API = process.env.PAYCALL_API ?? 'https://paycall-server.silonelabs.workers.dev'
+const API = process.env.PAYCALL_API ?? 'https://api.paycall.live'
 async function api(path: string, body: unknown, key?: string) {
   const res = await fetch(API + path, {
     method: 'POST',

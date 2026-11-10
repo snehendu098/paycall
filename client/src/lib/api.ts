@@ -1,4 +1,4 @@
-export const API = (process.env.NEXT_PUBLIC_API_URL ?? 'https://paycall-server.silonelabs.workers.dev').replace(/\/$/, '')
+export const API = (process.env.NEXT_PUBLIC_API_URL ?? 'https://api.paycall.live').replace(/\/$/, '')
 
 // micros → "$1.23"; sub-cent amounts keep precision
 export const $ = (m: number) => {

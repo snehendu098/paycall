@@ -20,6 +20,8 @@
       "localConnectionString": "postgres://paycall:paycall@localhost:5433/paycall"
     }
   ],
+  "routes": [{ "pattern": "api.paycall.live", "custom_domain": true }],
+  "workers_dev": true, // keep old url: paypal webhook + existing mcp grants
   "vars": {
     "PAYPAL_API": "https://api-m.sandbox.paypal.com",
     "DASHBOARD_ORIGIN": "https://paycall.live",

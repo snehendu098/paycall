@@ -9,7 +9,7 @@ type Settle = () => Promise<{ ok: true; header: string } | { ok: false; res: Res
 
 const b64json = (o: unknown) => btoa(JSON.stringify(o))
 
-export function paycall({ apiKey, price, facilitator = 'https://paycall-server.silonelabs.workers.dev' }: PaycallOptions) {
+export function paycall({ apiKey, price, facilitator = 'https://api.paycall.live' }: PaycallOptions) {
   const amount = Math.round(Number(price) * 1e6)
   if (!(amount > 0)) throw new Error(`paycall: bad price ${price}`)
   facilitator = facilitator.replace(/\/$/, '')

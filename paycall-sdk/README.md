@@ -15,7 +15,7 @@ import { createAgent, decodePaymentHeader, generateKey } from 'paycall-sdk'
 
 const { privateKey, pubkey } = await generateKey() // register pubkey under owner (dashboard → Buyer → Add agent)
 const agent = await createAgent(privateKey)
-const res = await agent.fetch('https://paycall-server.silonelabs.workers.dev/p/<endpointId>/...')
+const res = await agent.fetch('https://api.paycall.live/p/<endpointId>/...')
 if (res.status === 402) console.log('not paid:', decodePaymentHeader(res.headers.get('payment-required'))?.error)
 else console.log(await res.json(), `spent $${agent.spent / 1e6}`)
 ```

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { createAgent, decodePaymentHeader, generateKey } from '../src/index'
 
-const API = process.env.PAYCALL_API ?? 'https://paycall-server.silonelabs.workers.dev'
+const API = process.env.PAYCALL_API ?? 'https://api.paycall.live'
 const SIGNED_FIELDS = ['channelId', 'payer', 'payTo', 'cumulativeAmount', 'currency', 'seq', 'expiry']
 
 async function api(method: string, path: string, body: unknown, key?: string) {

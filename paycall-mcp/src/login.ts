@@ -3,7 +3,7 @@ import { homedir, hostname } from 'node:os'
 import { dirname, join } from 'node:path'
 import { generateKey } from 'paycall-sdk'
 
-export const API = process.env.PAYCALL_API ?? 'https://paycall-server.silonelabs.workers.dev'
+export const API = process.env.PAYCALL_API ?? 'https://api.paycall.live'
 export const KEY_FILE = process.env.PAYCALL_KEY_FILE ?? join(homedir(), '.config', 'paycall', 'agent.json')
 
 type Saved = { privateKey: string; pubkey: string; name: string }
