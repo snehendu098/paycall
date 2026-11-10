@@ -7,7 +7,9 @@ import { dashboard } from './dashboard'
 import { connect } from './db'
 import { mcpHandler } from './mcp'
 import { settleAll } from './payouts'
+import { jwks } from './lib/receipt'
 import { adminRoute } from './routes/admin.route'
+import { disputeRoute } from './routes/dispute.route'
 import { agentRoute } from './routes/agent.route'
 import { approvalRoute } from './routes/approval.route'
 import { search as catalog } from './controllers/catalog.controller'
@@ -53,7 +55,9 @@ const app = new Hono<AppEnv>()
   .get('/authorize', ...authorize)
   .route('/oauth', oauthRoute)
   .route('/approvals', approvalRoute)
+  .route('/disputes', disputeRoute)
   .get('/catalog', ...catalog)
+  .get('/.well-known/jwks.json', async (c) => c.json(await jwks(c.env.BETTER_AUTH_SECRET), 200, { 'cache-control': 'public, max-age=3600' }))
   .route('/p', proxyRoute)
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)
