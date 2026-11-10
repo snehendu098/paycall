@@ -5,14 +5,23 @@ import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { $, API, toDollars, toMicros } from '@/lib/api'
 import { pc } from '@/lib/pc'
+import { XIcon } from '@phosphor-icons/react'
 import { Badge, Code, Input } from '@/components/ds'
 import { Act, ease, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
 
 export type Endpoint = { id: string; name: string; upstreamUrl: string; price: number; description: string | null; category: string | null; hasAuth: boolean; verified: boolean; createdAt: string }
 
 const PRICE = /^\d+(\.\d{1,6})?$/
-const AUTH = /^[A-Za-z0-9-]+:[^\r\n]+$/
-const authOf = (f: FormData) => String(f.get('upstreamAuth') ?? '').trim()
+const HNAME = /^[A-Za-z0-9-]{1,64}$/
+type Row = { k: string; v: string }
+/** HeaderFields rows (hidden json input) → {header: value}; blank rows skipped. */
+function readHeaders(f: FormData): { headers?: Record<string, string>; error?: string } {
+  const rows = (JSON.parse(String(f.get('upstreamHeaders') ?? '[]')) as Row[]).map((r) => ({ k: r.k.trim(), v: r.v.trim() })).filter((r) => r.k || r.v)
+  if (!rows.length) return {}
+  if (rows.some((r) => !HNAME.test(r.k))) return { error: 'Header names: letters, digits and - only' }
+  if (rows.some((r) => !r.v)) return { error: 'Every header needs a value' }
+  return { headers: Object.fromEntries(rows.map((r) => [r.k, r.v])) }
+}
 const proxyUrl = (id: string) => `${API}/p/${id}`
 
 /** Endpoint rows. */
@@ -61,12 +70,13 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
     const f = new FormData(ev.currentTarget)
     const price = String(f.get('price')).trim()
     if (!PRICE.test(price) || toMicros(price) < 1) return setErr('Price: dollars > 0, up to 6 decimals')
-    const upstreamAuth = authOf(f)
-    if (upstreamAuth && !AUTH.test(upstreamAuth)) return setErr('Auth header: Header-Name: value')
+    const { headers, error } = readHeaders(f)
+    if (error) return setErr(error)
+    const clear = f.get('clearHeaders') === '1'
     setErr('')
     setBusy(true)
     try {
-      await pc('seller', `endpoints/${e.id}`, { method: 'PATCH', body: { description: String(f.get('description')).trim(), category: String(f.get('category')).trim(), price: toMicros(price), ...(upstreamAuth && { upstreamAuth }) } })
+      await pc('seller', `endpoints/${e.id}`, { method: 'PATCH', body: { description: String(f.get('description')).trim(), category: String(f.get('category')).trim(), price: toMicros(price), ...(headers ? { upstreamHeaders: headers } : clear && { upstreamHeaders: null }) } })
       toast.success(`${e.name} updated`)
       setEdit(false)
       reload()
@@ -106,7 +116,7 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
       {edit && (
         <form onSubmit={save} noValidate className="flex flex-col gap-4 border border-border p-4">
           <MetaFields id={e.id} d={e} />
-          <AuthField id={e.id} set={e.hasAuth} />
+          <HeaderFields set={e.hasAuth} />
           <Field label="Price per call" id={`${e.id}-price`}>
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">$</span>
@@ -135,12 +145,43 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
   )
 }
 
-/** Optional header PayCall adds when forwarding (seller's own upstream key). Write-only. */
-function AuthField({ id, set }: { id: string; set?: boolean }) {
+/** Upstream headers PayCall adds when forwarding (seller's own API keys). Write-only: edit can replace or clear, never read. */
+function HeaderFields({ set, error }: { set?: boolean; error?: string }) {
+  const [rows, setRows] = useState<Row[]>(set ? [] : [{ k: 'x-api-key', v: '' }])
+  const [clear, setClear] = useState(false)
+  const put = (i: number, r: Partial<Row>) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, ...r } : x)))
+  const cell = 'h-9 font-mono text-xs md:text-xs'
   return (
-    <Field label="Upstream auth header" id={`${id}-auth`} hint={set ? 'A key is set. Blank keeps it; type a new one to replace.' : 'Optional. Encrypted, never shown again, sent only to your API.'}>
-      <Input id={`${id}-auth`} name="upstreamAuth" type="password" autoComplete="off" spellCheck={false} placeholder="x-api-key: sk_live_…" className="font-mono" />
-    </Field>
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="mb-1.5 text-[13px] text-muted-foreground">Upstream headers</legend>
+      <input type="hidden" name="upstreamHeaders" value={JSON.stringify(clear ? [] : rows)} />
+      <input type="hidden" name="clearHeaders" value={clear ? '1' : ''} />
+      {set && !rows.length && (
+        <div className="flex items-center justify-between border border-border px-3 py-2 text-xs">
+          <span className={clear ? 'text-destructive' : 'text-muted-foreground'}>{clear ? 'Keys will be removed on save' : 'Keys set · encrypted'}</span>
+          <button type="button" onClick={() => setClear(!clear)} className="text-muted-foreground transition-colors hover:text-foreground">{clear ? 'Undo' : 'Remove'}</button>
+        </div>
+      )}
+      {rows.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {rows.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input aria-label={`Header ${i + 1} name`} value={r.k} onChange={(e) => put(i, { k: e.target.value })} placeholder="x-api-key" spellCheck={false} autoComplete="off" className={`${cell} w-[38%]`} />
+              <Input aria-label={`Header ${i + 1} value`} value={r.v} onChange={(e) => put(i, { v: e.target.value })} type="password" placeholder="value" spellCheck={false} autoComplete="new-password" className={`${cell} flex-1`} />
+              <button type="button" aria-label={`Remove header ${i + 1}`} onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="grid size-9 shrink-0 place-items-center border border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground">
+                <XIcon className="size-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button type="button" disabled={rows.length >= 10} onClick={() => { setClear(false); setRows((rs) => [...rs, { k: '', v: '' }]) }} className="self-start text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground disabled:opacity-40">
+        {set && !rows.length ? 'Replace keys' : '+ Add header'}
+      </button>
+      {error ? <span className="text-xs text-destructive">{error}</span> : (
+        <span className="text-xs text-muted-foreground/80">{set ? 'New headers replace all saved ones.' : 'Optional. If your API needs keys. Encrypted, sent only to your API, never shown again.'}</span>
+      )}
+    </fieldset>
   )
 }
 
@@ -158,7 +199,7 @@ function MetaFields({ id, d }: { id: string; d?: Pick<Endpoint, 'description' | 
   )
 }
 
-type Errs = { name?: string; upstreamUrl?: string; price?: string; upstreamAuth?: string; form?: string }
+type Errs = { name?: string; upstreamUrl?: string; price?: string; upstreamHeaders?: string; form?: string }
 
 /** "New endpoint" dialog with validation. */
 export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
@@ -176,14 +217,14 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
       name: !name ? 'Name it' : name.length > 64 ? 'Max 64 characters' : undefined,
       upstreamUrl: !https ? 'Must be a full https:// URL' : undefined,
       price: !PRICE.test(price) || toMicros(price) < 1 ? 'Dollars > 0, up to 6 decimals' : undefined,
-      upstreamAuth: authOf(f) && !AUTH.test(authOf(f)) ? 'Format: Header-Name: value' : undefined,
+      upstreamHeaders: readHeaders(f).error,
     }
     setErrs(v)
-    if (v.name || v.upstreamUrl || v.price || v.upstreamAuth) return
+    if (v.name || v.upstreamUrl || v.price || v.upstreamHeaders) return
     setBusy(true)
     try {
       const description = String(f.get('description')).trim() || undefined, category = String(f.get('category')).trim() || undefined
-      await pc('seller', 'endpoints', { body: { name, upstreamUrl, price: toMicros(price), description, category, upstreamAuth: authOf(f) || undefined } })
+      await pc('seller', 'endpoints', { body: { name, upstreamUrl, price: toMicros(price), description, category, upstreamHeaders: readHeaders(f).headers } })
       toast.success(`${name} is live`, { description: `${$(toMicros(price))} per call` })
       setOpen(false)
       onCreated()
@@ -212,9 +253,7 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
             </div>
           </Field>
           <MetaFields id="ep" />
-          <Field label="Upstream auth header" id="ep-auth" error={errs.upstreamAuth} hint="Optional. If your API needs a key. Encrypted, never shown again.">
-            <Input id="ep-auth" name="upstreamAuth" type="password" autoComplete="off" spellCheck={false} placeholder="x-api-key: sk_live_…" className="font-mono" aria-invalid={!!errs.upstreamAuth} />
-          </Field>
+          <HeaderFields error={errs.upstreamHeaders} />
           {errs.form && <p role="alert" className="text-xs text-destructive">{errs.form}</p>}
           <div className="flex justify-end pt-1">
             <Act primary type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create endpoint'}</Act>
