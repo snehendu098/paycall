@@ -21,11 +21,25 @@ export function ago(t: string | number) {
 
 export type Entry = {
   id: number | string
-  type: 'topup' | 'reload' | 'charge' | 'payout' | 'fee'
+  type: 'topup' | 'reload' | 'charge' | 'refund' | 'payout' | 'fee'
   amount: number
   ownerId: string | null
   sellerId: string | null
   agentPubkey: string | null
   ref: string | null
+  parentId?: number | null // refund → its charge
+  resource?: string | null
+  units?: number | null // metered charge
+  refunded?: number // charge: refunded so far (absent on live sse rows)
+  dispute?: 'open' | 'refunded' | 'rejected' | null
   createdAt: string
 }
+
+export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: string; amount: number; reason: string; status: 'open' | 'refunded' | 'rejected'; createdAt: string; resolvedAt: string | null; resource: string | null; chargedAt: string }
+
+export type Pricing = { pricing: 'call' | 'token' | 'char' | 'pass'; price: number; maxAmount: number | null; passSeconds: number | null }
+// 3600 → 1h, 604800 → 7d (86400 stays 24h)
+export const dur = (s: number) => (s % 86_400 === 0 && s > 86_400 ? `${s / 86_400}d` : s % 3600 === 0 ? `${s / 3600}h` : `${Math.round(s / 60)}m`)
+/** Suffix after `$(price)`: "/call", "/token · max $0.05", " / 1h pass". */
+export const per = (p: Pricing) =>
+  p.pricing === 'pass' ? ` / ${dur(p.passSeconds ?? 0)} pass` : `/${p.pricing}${p.maxAmount != null && p.pricing !== 'call' ? ` · max ${$(p.maxAmount)}` : ''}`

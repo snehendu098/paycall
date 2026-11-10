@@ -2,11 +2,11 @@
 
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { $, API } from '@/lib/api'
+import { $, API, per, type Pricing } from '@/lib/api'
 import { errMsg, Nothing, Page, Skel } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
-type Listing = { id: string; name: string; description: string | null; category: string | null; price: number; verified: boolean; seller: string; url: string }
+type Listing = Pricing & { id: string; name: string; description: string | null; category: string | null; verified: boolean; seller: string; url: string }
 
 const PRICES = [{ label: 'Any price', max: Infinity }, { label: '≤ $0.01', max: 10_000 }, { label: '≤ $0.10', max: 100_000 }, { label: '≤ $1', max: 1_000_000 }]
 const spring = { type: 'spring', stiffness: 420, damping: 32 } as const
@@ -111,7 +111,7 @@ function Palette({ open, onClose, q, setQ, list }: { open: boolean; onClose: () 
                     <div className="flex items-center gap-2"><span className="truncate text-sm">{l.name}</span>{l.verified && <Verified />}</div>
                     <div className="truncate text-xs text-muted-foreground">{l.seller}{l.description && <> · {l.description}</>}</div>
                   </div>
-                  <span className="relative shrink-0 font-mono text-xs">{copied === l.id ? 'Copied' : <>{$(l.price)}<span className="text-muted-foreground">/call</span></>}</span>
+                  <span className="relative shrink-0 font-mono text-xs">{copied === l.id ? 'Copied' : <>{$(l.price)}<span className="text-muted-foreground">{per(l)}</span></>}</span>
                 </li>
               ))}
             </ul>
@@ -155,7 +155,7 @@ export default function CatalogPage() {
   const close = () => { setOpen(false); trigger.current?.focus() }
   // ponytail: filters run on the ≤50 rows the api returns; move to query params when catalog grows
   const cats = [...new Set((list ?? []).map((l) => l.category).filter((c): c is string => !!c))]
-  const shown = list?.filter((l) => l.price <= max && (!cat || l.category === cat))
+  const shown = list?.filter((l) => (l.maxAmount ?? l.price) <= max && (!cat || l.category === cat))
 
   return (
     <Page className="gap-8">
@@ -202,7 +202,7 @@ export default function CatalogPage() {
                     {l.description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:truncate" title={l.description}>{l.description}</p>}
                 </div>
                 <div className="flex shrink-0 items-center justify-between gap-4">
-                  <span className="font-mono text-sm">{$(l.price)}<span className="text-muted-foreground">/call</span></span>
+                  <span className="font-mono text-sm">{$(l.price)}<span className="text-muted-foreground">{per(l)}</span></span>
                   <CopyUrl url={l.url} />
                 </div>
               </li>
