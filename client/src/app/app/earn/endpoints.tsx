@@ -8,9 +8,11 @@ import { pc } from '@/lib/pc'
 import { Badge, Code, Input } from '@/components/ds'
 import { Act, ease, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
 
-export type Endpoint = { id: string; name: string; upstreamUrl: string; price: number; description: string | null; category: string | null; createdAt: string }
+export type Endpoint = { id: string; name: string; upstreamUrl: string; price: number; description: string | null; category: string | null; hasAuth: boolean; verified: boolean; createdAt: string }
 
 const PRICE = /^\d+(\.\d{1,6})?$/
+const AUTH = /^[A-Za-z0-9-]+:[^\r\n]+$/
+const authOf = (f: FormData) => String(f.get('upstreamAuth') ?? '').trim()
 const proxyUrl = (id: string) => `${API}/p/${id}`
 
 /** Endpoint rows. */
@@ -59,10 +61,12 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
     const f = new FormData(ev.currentTarget)
     const price = String(f.get('price')).trim()
     if (!PRICE.test(price) || toMicros(price) < 1) return setErr('Price: dollars > 0, up to 6 decimals')
+    const upstreamAuth = authOf(f)
+    if (upstreamAuth && !AUTH.test(upstreamAuth)) return setErr('Auth header: Header-Name: value')
     setErr('')
     setBusy(true)
     try {
-      await pc('seller', `endpoints/${e.id}`, { method: 'PATCH', body: { description: String(f.get('description')).trim(), category: String(f.get('category')).trim(), price: toMicros(price) } })
+      await pc('seller', `endpoints/${e.id}`, { method: 'PATCH', body: { description: String(f.get('description')).trim(), category: String(f.get('category')).trim(), price: toMicros(price), ...(upstreamAuth && { upstreamAuth }) } })
       toast.success(`${e.name} updated`)
       setEdit(false)
       reload()
@@ -78,7 +82,11 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
     <div data-testid="endpoint" className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-4">
         <div className="min-w-0">
-          <div className="truncate text-sm">{e.name}</div>
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm">{e.name}</span>
+            {e.verified && <Badge tone="live">Verified</Badge>}
+            {e.hasAuth && <Badge tone="muted">Key set</Badge>}
+          </div>
           <div className="truncate font-mono text-xs text-muted-foreground" title={e.upstreamUrl}>{e.upstreamUrl}</div>
         </div>
         <span className="shrink-0 font-mono text-sm">{$(e.price)}<span className="text-muted-foreground"> / call</span></span>
@@ -98,6 +106,7 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
       {edit && (
         <form onSubmit={save} noValidate className="flex flex-col gap-4 border border-border p-4">
           <MetaFields id={e.id} d={e} />
+          <AuthField id={e.id} set={e.hasAuth} />
           <Field label="Price per call" id={`${e.id}-price`}>
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">$</span>
@@ -126,6 +135,15 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
   )
 }
 
+/** Optional header PayCall adds when forwarding (seller's own upstream key). Write-only. */
+function AuthField({ id, set }: { id: string; set?: boolean }) {
+  return (
+    <Field label="Upstream auth header" id={`${id}-auth`} hint={set ? 'A key is set. Blank keeps it; type a new one to replace.' : 'Optional. Encrypted, never shown again, sent only to your API.'}>
+      <Input id={`${id}-auth`} name="upstreamAuth" type="password" autoComplete="off" spellCheck={false} placeholder="x-api-key: sk_live_…" className="font-mono" />
+    </Field>
+  )
+}
+
 /** Description + category inputs shared by create / edit. */
 function MetaFields({ id, d }: { id: string; d?: Pick<Endpoint, 'description' | 'category'> }) {
   return (
@@ -140,7 +158,7 @@ function MetaFields({ id, d }: { id: string; d?: Pick<Endpoint, 'description' | 
   )
 }
 
-type Errs = { name?: string; upstreamUrl?: string; price?: string; form?: string }
+type Errs = { name?: string; upstreamUrl?: string; price?: string; upstreamAuth?: string; form?: string }
 
 /** "New endpoint" dialog with validation. */
 export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
@@ -158,13 +176,14 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
       name: !name ? 'Name it' : name.length > 64 ? 'Max 64 characters' : undefined,
       upstreamUrl: !https ? 'Must be a full https:// URL' : undefined,
       price: !PRICE.test(price) || toMicros(price) < 1 ? 'Dollars > 0, up to 6 decimals' : undefined,
+      upstreamAuth: authOf(f) && !AUTH.test(authOf(f)) ? 'Format: Header-Name: value' : undefined,
     }
     setErrs(v)
-    if (v.name || v.upstreamUrl || v.price) return
+    if (v.name || v.upstreamUrl || v.price || v.upstreamAuth) return
     setBusy(true)
     try {
       const description = String(f.get('description')).trim() || undefined, category = String(f.get('category')).trim() || undefined
-      await pc('seller', 'endpoints', { body: { name, upstreamUrl, price: toMicros(price), description, category } })
+      await pc('seller', 'endpoints', { body: { name, upstreamUrl, price: toMicros(price), description, category, upstreamAuth: authOf(f) || undefined } })
       toast.success(`${name} is live`, { description: `${$(toMicros(price))} per call` })
       setOpen(false)
       onCreated()
@@ -178,7 +197,7 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
   return (
     <>
       <Act onClick={() => { setErrs({}); setOpen(true) }}>New endpoint</Act>
-      <PDialog open={open} onOpenChange={setOpen} title="New endpoint" description="PayCall answers 402 until the agent pays, then forwards the request to your API untouched.">
+      <PDialog open={open} onOpenChange={setOpen} title="New endpoint" description="PayCall answers 402 until the agent pays, then forwards the request to your API.">
         <form onSubmit={submit} noValidate className="flex flex-col gap-5">
           <Field label="Name" id="ep-name" error={errs.name}>
             <Input id="ep-name" name="name" placeholder="weather" autoFocus maxLength={64} aria-invalid={!!errs.name} />
@@ -193,6 +212,9 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
             </div>
           </Field>
           <MetaFields id="ep" />
+          <Field label="Upstream auth header" id="ep-auth" error={errs.upstreamAuth} hint="Optional. If your API needs a key. Encrypted, never shown again.">
+            <Input id="ep-auth" name="upstreamAuth" type="password" autoComplete="off" spellCheck={false} placeholder="x-api-key: sk_live_…" className="font-mono" aria-invalid={!!errs.upstreamAuth} />
+          </Field>
           {errs.form && <p role="alert" className="text-xs text-destructive">{errs.form}</p>}
           <div className="flex justify-end pt-1">
             <Act primary type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create endpoint'}</Act>

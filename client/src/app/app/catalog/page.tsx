@@ -7,7 +7,7 @@ import { Badge } from '@/components/ds'
 import { errMsg, Nothing, Page, Skel } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
-type Listing = { id: string; name: string; description: string | null; category: string | null; price: number; seller: string; url: string }
+type Listing = { id: string; name: string; description: string | null; category: string | null; price: number; verified: boolean; seller: string; url: string }
 
 const PRICES = [{ label: 'Any price', max: Infinity }, { label: '≤ $0.01', max: 10_000 }, { label: '≤ $0.10', max: 100_000 }, { label: '≤ $1', max: 1_000_000 }]
 const spring = { type: 'spring', stiffness: 420, damping: 32 } as const
@@ -17,6 +17,13 @@ const SearchIcon = ({ className }: { className?: string }) => (
     <circle cx="11" cy="11" r="7" />
     <path d="m20 20-3.5-3.5" />
   </svg>
+)
+// reviewed by PayCall
+const Verified = () => (
+  <span title="Verified by PayCall" className="inline-flex shrink-0 items-center gap-1 text-[11px] text-live">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="size-3.5"><path d="m12 1.5 2.6 2 3.3-.2.9 3.2 2.7 1.9-1.2 3.1 1.2 3.1-2.7 1.9-.9 3.2-3.3-.2-2.6 2-2.6-2-3.3.2-.9-3.2-2.7-1.9 1.2-3.1L2.5 8.4l2.7-1.9.9-3.2 3.3.2z" /><path d="m8.5 12.2 2.4 2.4 4.6-4.8" fill="none" stroke="var(--background)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+    Verified
+  </span>
 )
 const Kbd = ({ children }: { children: string }) => <kbd className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{children}</kbd>
 
@@ -102,7 +109,7 @@ function Palette({ open, onClose, q, setQ, list }: { open: boolean; onClose: () 
                 >
                   {n === i && <motion.span layoutId="pal-hl" transition={spring} className="absolute inset-0 rounded-lg bg-foreground/[0.06]" />}
                   <div className="relative min-w-0 flex-1">
-                    <div className="truncate text-sm">{l.name}</div>
+                    <div className="flex items-center gap-2"><span className="truncate text-sm">{l.name}</span>{l.verified && <Verified />}</div>
                     <div className="truncate text-xs text-muted-foreground">{l.seller}{l.description && <> · {l.description}</>}</div>
                   </div>
                   <span className="relative shrink-0 font-mono text-xs">{copied === l.id ? 'Copied' : <>{$(l.price)}<span className="text-muted-foreground">/call</span></>}</span>
@@ -190,6 +197,7 @@ export default function CatalogPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm">{l.name}</span>
+                    {l.verified && <Verified />}
                     {l.category && <Badge tone="muted">{l.category}</Badge>}
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{l.seller}{l.description && <> · {l.description}</>}</p>
