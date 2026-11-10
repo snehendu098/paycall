@@ -3,10 +3,10 @@
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { $, ago } from '@/lib/api'
-import { enable } from '@/lib/pc'
-import { Btn, Input } from '@/components/ds'
+import { enable, pc } from '@/lib/pc'
+import { Btn, Code, Input } from '@/components/ds'
 import { Activity, LiveDot, useLedger } from '@/components/activity'
-import { Block, Empty, errMsg, Field, Nothing, Num, Page, PageSkeleton, Skel, useApi, useUser } from '@/components/portal'
+import { Act, Block, Empty, errMsg, Field, Nothing, Num, Page, PageSkeleton, PDialog, Skel, useApi, useUser } from '@/components/portal'
 import { EndpointList, NewEndpoint, type Endpoint } from './endpoints'
 
 type Payout = { id: string; gross: number; net: number; status: 'pending' | 'paid' | 'failed'; createdAt: string }
@@ -86,7 +86,7 @@ function Earn() {
             </div>
           ))}
         </div>
-        <p className="mt-6 text-sm text-muted-foreground">
+        <div className="mt-6 text-sm text-muted-foreground">
           {d ? (
             <>
               Payouts to <span className="text-foreground">{d.seller.paypalEmail}</span> every 10 min once owed ≥ $0.50 · 2% fee
@@ -94,7 +94,7 @@ function Earn() {
               {d.owed >= MIN && <span className="text-live"> · next payout soon</span>}
             </>
           ) : <Skel className="h-4 w-80 max-w-full" />}
-        </p>
+        </div>
       </section>
 
       <Block title="Endpoints" aside={<NewEndpoint onCreated={eps.reload} />}>
@@ -119,9 +119,61 @@ function Earn() {
         )}
       </Block>
 
+      <ApiKey />
+
       <Block title="Activity" aside={<LiveDot live={live} />}>
         <Activity role="seller" rows={rows} fresh={fresh} />
       </Block>
     </Page>
+  )
+}
+
+const SNIPPET = `import { withPaycall } from 'paycall-middleware'
+
+export const GET = withPaycall(
+  () => Response.json({ ok: true }),
+  { apiKey: process.env.PAYCALL_KEY!, price: '0.01' },
+)`
+
+/** Seller key for self-hosted paycall-middleware. Two-step button since rotating kills the old key. */
+function ApiKey() {
+  const [sure, setSure] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [key, setKey] = useState<string>()
+
+  async function gen() {
+    setBusy(true)
+    try {
+      setKey((await pc<{ apiKey: string }>('seller', 'sellers/me/key', { method: 'POST' })).apiKey)
+      setSure(false)
+    } catch (e) {
+      toast.error("Couldn't generate key", { description: errMsg(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Block title="API key">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4" data-testid="api-key">
+        <div className="text-sm">
+          <p className="text-muted-foreground">Charge for an API on your own server. Use this key with <span className="font-mono text-foreground">paycall-middleware</span>.</p>
+          <p className="mt-1 text-xs text-muted-foreground">{sure ? 'Sure? Apps using the old key stop working.' : 'Generating a new key turns off the old one.'}</p>
+        </div>
+        <div className="flex gap-2">
+          {sure && <Act onClick={() => setSure(false)} disabled={busy}>Cancel</Act>}
+          <Act primary={sure} onClick={() => (sure ? gen() : setSure(true))} disabled={busy}>{busy ? 'Generating…' : sure ? 'Yes, generate' : 'Generate new key'}</Act>
+        </div>
+      </div>
+      <PDialog open={!!key} onOpenChange={(o) => !o && setKey(undefined)} wide title="Your API key" description="Shown once. Copy it now.">
+        <div className="flex flex-col gap-5 text-[13px]">
+          <Code text={key ?? ''} className="[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:text-[12px]" />
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground">Set <span className="font-mono text-foreground">PAYCALL_KEY</span>, then wrap a route</span>
+            <Code text={SNIPPET} className="[&_pre]:text-[12px]" />
+          </div>
+        </div>
+      </PDialog>
+    </Block>
   )
 }

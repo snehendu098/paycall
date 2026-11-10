@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { $, short, toDollars, toMicros } from '@/lib/api'
+import { $, API, short, toDollars, toMicros } from '@/lib/api'
 import { pc } from '@/lib/pc'
 import { Code, Input } from '@/components/ds'
 import { Act, errMsg, Nothing, PDialog, Skel } from '@/components/portal'
@@ -83,34 +83,28 @@ function AgentRow({ a, reload }: { a: Agent; reload: () => void }) {
   )
 }
 
-/** "Add agent" dialog: key is made on the agent's machine by `login`, approved at /app/connect. */
+/** "Add agent" dialog: hosted MCP over OAuth; SDK scripts use device login + /app/connect. */
 export function AddAgent() {
   const [open, setOpen] = useState(false)
-  const add = `claude mcp add paycall -- bun run ${MCP_PATH}`
-  const desktop = JSON.stringify({ mcpServers: { paycall: { command: 'bun', args: ['run', MCP_PATH] } } }, null, 2)
+  const wrap = '[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:text-[12px]'
   return (
     <>
       <Act onClick={() => setOpen(true)}>Add agent</Act>
-      <PDialog open={open} onOpenChange={setOpen} wide title="Connect an agent" description="The agent makes its own key and you approve it here. The private key never leaves its machine.">
+      <PDialog open={open} onOpenChange={setOpen} wide title="Connect an agent" description="Add PayCall to Claude, then approve it in your browser.">
         <ol className="flex flex-col gap-6 text-[13px]" data-testid="snippet">
           <li className="flex flex-col gap-2">
-            <span className="text-muted-foreground">1 · Add the PayCall MCP server once (Claude Code)</span>
-            <Code text={add} className="[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:text-[12px]" />
-            <span className="text-xs text-muted-foreground/80">
-              Already added with a key? Run <span className="font-mono">claude mcp remove paycall</span> first. Claude Desktop: <span className="font-mono">claude_desktop_config.json</span>
-            </span>
-            <Code text={desktop} className="[&_pre]:max-h-40 [&_pre]:text-[12px]" />
+            <span className="text-muted-foreground">1 · Add the PayCall MCP server (Claude Code)</span>
+            <Code text={`claude mcp add --transport http paycall ${API}/mcp`} className={wrap} />
+            <span className="text-xs text-muted-foreground/80">Claude Desktop or another MCP client: add the same URL as a remote MCP server.</span>
           </li>
           <li className="flex flex-col gap-2">
-            <span className="text-muted-foreground">2 · Log in. Ask Claude to &ldquo;log in to PayCall&rdquo;, or run</span>
-            <Code text={`bun run ${MCP_PATH} login`} className="[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:text-[12px]" />
-          </li>
-          <li className="flex flex-col gap-2">
-            <span className="text-muted-foreground">3 · Enter the code it shows</span>
-            <Link href="/app/connect" onClick={() => setOpen(false)} className="self-start underline decoration-border underline-offset-4 hover:decoration-foreground">Open connect page</Link>
+            <span className="text-muted-foreground">2 · In Claude Code run <span className="font-mono text-foreground">/mcp</span> → paycall → Authenticate. Your browser opens; approve.</span>
           </li>
         </ol>
-        <p className="mt-6 border-t border-border pt-5 text-xs text-muted-foreground/80">Lost the key or switching machines? Log in again. The new key replaces the old one and your balance stays.</p>
+        <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 text-xs text-muted-foreground/80">
+          <span>For SDK scripts (no browser sign-in): run this, then enter the code on the <Link href="/app/connect" onClick={() => setOpen(false)} className="text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground">connect page</Link>.</span>
+          <Code text={`bun run ${MCP_PATH} login`} className={wrap} />
+        </div>
       </PDialog>
     </>
   )

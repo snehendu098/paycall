@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 
 const API = process.env.PAYCALL_API_URL!.replace(/\/$/, '')
 const ALLOW: Record<string, RegExp> = {
-  buyer: /^(owners\/me|agents|topup|entries|events|device)(\/|$)/,
+  buyer: /^(owners\/me|agents|topup|entries|events|device|oauth)(\/|$)/,
   seller: /^(sellers\/me|endpoints|entries|events)(\/|$)/,
 }
 const err = (error: string, status: number) => Response.json({ error }, { status })
