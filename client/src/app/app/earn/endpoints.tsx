@@ -3,13 +3,14 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { $, API, toDollars, toMicros } from '@/lib/api'
+import { $, API, dur, per, toDollars, toMicros, type Pricing } from '@/lib/api'
 import { pc } from '@/lib/pc'
 import { XIcon } from '@phosphor-icons/react'
 import { Badge, Code, Input } from '@/components/ds'
 import { Act, ease, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
+import { cn } from '@/lib/utils'
 
-export type Endpoint = { id: string; name: string; upstreamUrl: string; price: number; description: string | null; category: string | null; hasAuth: boolean; verified: boolean; createdAt: string }
+export type Endpoint = Pricing & { id: string; name: string; upstreamUrl: string; description: string | null; category: string | null; hasAuth: boolean; verified: boolean; createdAt: string }
 
 const PRICE = /^\d+(\.\d{1,6})?$/
 const HNAME = /^[A-Za-z0-9-]{1,64}$/
@@ -68,15 +69,15 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
   async function save(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault()
     const f = new FormData(ev.currentTarget)
-    const price = String(f.get('price')).trim()
-    if (!PRICE.test(price) || toMicros(price) < 1) return setErr('Price: dollars > 0, up to 6 decimals')
+    const p = readPricing(f)
+    if (p.errs.price || p.errs.maxAmount) return setErr(`${p.errs.price ? 'Price' : 'Max per call'}: ${p.errs.price ?? p.errs.maxAmount}`)
     const { headers, error } = readHeaders(f)
     if (error) return setErr(error)
     const clear = f.get('clearHeaders') === '1'
     setErr('')
     setBusy(true)
     try {
-      await pc('seller', `endpoints/${e.id}`, { method: 'PATCH', body: { description: String(f.get('description')).trim(), category: String(f.get('category')).trim(), price: toMicros(price), ...(headers ? { upstreamHeaders: headers } : clear && { upstreamHeaders: null }) } })
+      await pc('seller', `endpoints/${e.id}`, { method: 'PATCH', body: { description: String(f.get('description')).trim(), category: String(f.get('category')).trim(), ...p.body, ...(headers ? { upstreamHeaders: headers } : clear && { upstreamHeaders: null }) } })
       toast.success(`${e.name} updated`)
       setEdit(false)
       reload()
@@ -90,7 +91,7 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
   const code = '[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:py-2.5 [&_pre]:text-[12px]'
   return (
     <div data-testid="endpoint" className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm">{e.name}</span>
@@ -99,7 +100,7 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
           </div>
           <div className="truncate font-mono text-xs text-muted-foreground" title={e.upstreamUrl}>{e.upstreamUrl}</div>
         </div>
-        <span className="shrink-0 font-mono text-sm">{$(e.price)}<span className="text-muted-foreground"> / call</span></span>
+        <span className="shrink-0 font-mono text-sm">{$(e.price)}<span className="text-muted-foreground">{per(e)}</span></span>
       </div>
       {(e.category || e.description) && (
         <p className="text-[13px] text-muted-foreground">
@@ -117,12 +118,7 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
         <form onSubmit={save} noValidate className="flex flex-col gap-4 border border-border p-4">
           <MetaFields id={e.id} d={e} />
           <HeaderFields set={e.hasAuth} />
-          <Field label="Price per call" id={`${e.id}-price`}>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">$</span>
-              <Input id={`${e.id}-price`} name="price" inputMode="decimal" defaultValue={toDollars(e.price)} className="pl-7 font-mono" />
-            </div>
-          </Field>
+          <PricingFields id={e.id} d={e} />
           {err && <p role="alert" className="text-xs text-destructive">{err}</p>}
           <div className="flex justify-end"><Act primary type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Act></div>
         </form>
@@ -199,7 +195,84 @@ function MetaFields({ id, d }: { id: string; d?: Pick<Endpoint, 'description' | 
   )
 }
 
-type Errs = { name?: string; upstreamUrl?: string; price?: string; upstreamHeaders?: string; form?: string }
+type Errs = { name?: string; upstreamUrl?: string; price?: string; maxAmount?: string; upstreamHeaders?: string; form?: string }
+
+const MODES = [
+  { k: 'call', label: 'Per call', price: 'Price per call' },
+  { k: 'token', label: 'Per token', price: 'Price per token' },
+  { k: 'char', label: 'Per character', price: 'Price per character' },
+  { k: 'pass', label: 'Time pass', price: 'Price per pass' },
+] as const
+const PASSES = [[3600, '1 hour'], [86_400, '24 hours'], [604_800, '7 days'], [2_592_000, '30 days']] as const
+const DOLLARS = 'Dollars > 0, up to 6 decimals'
+type PBody = { price: number } & ({ pricing: 'call' } | { pricing: 'token' | 'char'; maxAmount: number } | { pricing: 'pass'; passSeconds: number })
+
+/** PricingFields → create/patch body (pricing unit always sent together). */
+function readPricing(f: FormData): { body: PBody; errs: Pick<Errs, 'price' | 'maxAmount'> } {
+  const pricing = String(f.get('pricing')) as Pricing['pricing']
+  const price = String(f.get('price')).trim(), max = String(f.get('maxAmount') ?? '').trim()
+  const metered = pricing === 'token' || pricing === 'char'
+  const errs = {
+    price: !PRICE.test(price) || toMicros(price) < 1 ? DOLLARS : undefined,
+    maxAmount: !metered ? undefined : !PRICE.test(max) || toMicros(max) < 1 ? DOLLARS : toMicros(max) < toMicros(price) ? `At least the price per ${pricing === 'char' ? 'character' : 'token'}` : undefined,
+  }
+  const p = toMicros(price)
+  const body: PBody = metered ? { pricing, price: p, maxAmount: toMicros(max) } : pricing === 'pass' ? { pricing, price: p, passSeconds: Number(f.get('passSeconds')) } : { pricing: 'call', price: p }
+  return { body, errs }
+}
+
+const money = (id: string, name: string, def: string, bad?: boolean) => (
+  <div className="relative">
+    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">$</span>
+    <Input id={id} name={name} inputMode="decimal" defaultValue={def} className="pl-7 font-mono" aria-invalid={bad} />
+  </div>
+)
+
+/** Pricing mode segmented control + price, and max (metered) or duration (pass). */
+function PricingFields({ id, d, errs = {} }: { id: string; d?: Pricing; errs?: Pick<Errs, 'price' | 'maxAmount'> }) {
+  const [mode, setMode] = useState<Pricing['pricing']>(d?.pricing ?? 'call')
+  const m = MODES.find((x) => x.k === mode)!
+  const metered = mode === 'token' || mode === 'char'
+  return (
+    <>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1.5 text-[13px] text-muted-foreground">Pricing</legend>
+        <input type="hidden" name="pricing" value={mode} />
+        <div role="radiogroup" className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-4">
+          {MODES.map((x) => (
+            <button key={x.k} type="button" role="radio" aria-checked={mode === x.k} onClick={() => setMode(x.k)} className={cn('h-9 bg-card text-[13px] transition-colors', mode === x.k ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground')}>
+              {x.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <div className={cn('grid gap-4', mode !== 'call' && 'sm:grid-cols-2')}>
+        <Field label={m.price} id={`${id}-price`} error={errs.price} hint={mode === 'call' ? 'Fractions of a cent work, e.g. 0.001.' : undefined}>
+          {money(`${id}-price`, 'price', d ? toDollars(d.price) : '0.01', !!errs.price)}
+        </Field>
+        {metered && (
+          <Field label="Max per call" id={`${id}-max`} error={errs.maxAmount}>
+            {money(`${id}-max`, 'maxAmount', d?.maxAmount ? toDollars(d.maxAmount) : '0.05', !!errs.maxAmount)}
+          </Field>
+        )}
+        {mode === 'pass' && (
+          <Field label="Pass lasts" id={`${id}-pass`}>
+            <select id={`${id}-pass`} name="passSeconds" defaultValue={d?.passSeconds ?? 86_400} className="h-11 w-full border border-input bg-card px-3 text-sm outline-none transition-colors hover:border-foreground/30 focus-visible:border-foreground">
+              {PASSES.map(([s, l]) => <option key={s} value={s}>{l}</option>)}
+              {/* keep a non-preset duration (set via api) instead of silently overwriting it */}
+              {d?.passSeconds && !PASSES.some(([s]) => s === d.passSeconds) && <option value={d.passSeconds}>{dur(d.passSeconds)}</option>}
+            </select>
+          </Field>
+        )}
+      </div>
+      {mode !== 'call' && (
+        <p className="-mt-2 text-xs text-muted-foreground/80">
+          {metered ? `Agents authorize the max; you're paid per ${mode === 'char' ? 'character' : 'token'} of the response, the rest goes back.` : 'One payment, unlimited calls until it expires.'}
+        </p>
+      )}
+    </>
+  )
+}
 
 /** "New endpoint" dialog with validation. */
 export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
@@ -210,22 +283,23 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
   async function submit(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault()
     const f = new FormData(ev.currentTarget)
-    const name = String(f.get('name')).trim(), upstreamUrl = String(f.get('upstreamUrl')).trim(), price = String(f.get('price')).trim()
+    const name = String(f.get('name')).trim(), upstreamUrl = String(f.get('upstreamUrl')).trim()
+    const p = readPricing(f)
     let https = false
     try { https = new URL(upstreamUrl).protocol === 'https:' } catch {}
     const v: Errs = {
       name: !name ? 'Name it' : name.length > 64 ? 'Max 64 characters' : undefined,
       upstreamUrl: !https ? 'Must be a full https:// URL' : undefined,
-      price: !PRICE.test(price) || toMicros(price) < 1 ? 'Dollars > 0, up to 6 decimals' : undefined,
+      ...p.errs,
       upstreamHeaders: readHeaders(f).error,
     }
     setErrs(v)
-    if (v.name || v.upstreamUrl || v.price || v.upstreamHeaders) return
+    if (v.name || v.upstreamUrl || v.price || v.maxAmount || v.upstreamHeaders) return
     setBusy(true)
     try {
       const description = String(f.get('description')).trim() || undefined, category = String(f.get('category')).trim() || undefined
-      await pc('seller', 'endpoints', { body: { name, upstreamUrl, price: toMicros(price), description, category, upstreamHeaders: readHeaders(f).headers } })
-      toast.success(`${name} is live`, { description: `${$(toMicros(price))} per call` })
+      await pc('seller', 'endpoints', { body: { name, upstreamUrl, ...p.body, description, category, upstreamHeaders: readHeaders(f).headers } })
+      toast.success(`${name} is live`, { description: `${$(p.body.price)}${per({ maxAmount: null, passSeconds: null, ...p.body })}` })
       setOpen(false)
       onCreated()
     } catch (e) {
@@ -246,12 +320,7 @@ export function NewEndpoint({ onCreated }: { onCreated: () => void }) {
           <Field label="Upstream URL" id="ep-url" error={errs.upstreamUrl} hint="Your API, as is. HTTPS only.">
             <Input id="ep-url" name="upstreamUrl" type="url" placeholder="https://api.example.com/v1" className="font-mono" aria-invalid={!!errs.upstreamUrl} />
           </Field>
-          <Field label="Price per call" id="ep-price" error={errs.price} hint="Fractions of a cent work, e.g. 0.001.">
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">$</span>
-              <Input id="ep-price" name="price" inputMode="decimal" defaultValue="0.01" className="pl-7 font-mono" aria-invalid={!!errs.price} />
-            </div>
-          </Field>
+          <PricingFields id="ep" errs={errs} />
           <MetaFields id="ep" />
           <HeaderFields error={errs.upstreamHeaders} />
           {errs.form && <p role="alert" className="text-xs text-destructive">{errs.form}</p>}
