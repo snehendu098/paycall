@@ -49,8 +49,8 @@ export function makeAuth(env: CloudflareBindings) {
 }
 
 const ALLOW: Record<string, RegExp> = {
-  buyer: /^(owners\/me|agents|approvals|topup|entries|events|device|oauth)(\/|$)/,
-  seller: /^(sellers\/me|endpoints|entries|events)(\/|$)/,
+  buyer: /^(owners\/me|agents|approvals|disputes|topup|entries|events|device|oauth)(\/|$)/,
+  seller: /^(sellers\/me|endpoints|entries|disputes|events)(\/|$)/,
 }
 const Enable = z.discriminatedUnion('role', [
   z.object({ role: z.literal('buyer') }),

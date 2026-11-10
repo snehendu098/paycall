@@ -1,7 +1,7 @@
 import { zValidator } from '@hono/zod-validator'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { entries } from '../db/schema'
+import { disputes, entries } from '../db/schema'
 import { factory } from '../lib/factory'
 
 export const list = factory.createHandlers(
@@ -10,7 +10,11 @@ export const list = factory.createHandlers(
     const { limit, before } = c.req.valid('query')
     const { role, id } = c.var.principal
     const rows = await c.var.db
-      .select()
+      .select({
+        ...getTableColumns(entries),
+        refunded: sql<number>`(select coalesce(sum(r.amount), 0) from entries r where r.parent_id = ${entries.id} and r.type = 'refund')`.mapWith(Number),
+        dispute: sql<string | null>`(select status from disputes d where d.entry_id = ${entries.id})`,
+      })
       .from(entries)
       .where(and(eq(role === 'owner' ? entries.ownerId : entries.sellerId, id), before ? lt(entries.id, before) : undefined))
       .orderBy(desc(entries.id))
