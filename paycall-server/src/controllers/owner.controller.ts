@@ -1,5 +1,6 @@
 import { zValidator } from '@hono/zod-validator'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
+import { netAmount } from '../ledger'
 import { z } from 'zod'
 import { sumMicros } from '../db'
 import { agents, entries, owners } from '../db/schema'
@@ -21,9 +22,9 @@ export const me = factory.createHandlers(async (c) => {
   const [{ apiKeyHash: _, ...owner }] = await db.select().from(owners).where(eq(owners.id, id))
   const agentList = await db.select().from(agents).where(eq(agents.ownerId, id))
   const spendBySeller = await db
-    .select({ sellerId: entries.sellerId, spent: sumMicros(entries.amount) })
+    .select({ sellerId: entries.sellerId, spent: netAmount })
     .from(entries)
-    .where(and(eq(entries.ownerId, id), eq(entries.type, 'charge')))
+    .where(and(eq(entries.ownerId, id), inArray(entries.type, ['charge', 'refund'])))
     .groupBy(entries.sellerId)
   return c.json({ owner, agents: agentList, spendBySeller })
 })

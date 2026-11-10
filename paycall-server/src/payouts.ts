@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { withDb, type DB } from './db'
 import { channels, entries, payoutBatches, payoutItems, sellers } from './db/schema'
 import { paypal, PayPalError } from './lib/paypal'
+import { heldOf, refundedOf } from './ledger'
 import { floorCents, randomId, toDollars } from './lib/util'
 
 type Env = CloudflareBindings
@@ -20,7 +21,8 @@ export async function runSettlement(env: Env, db: DB) {
       .select({
         id: sellers.id,
         email: sellers.paypalEmail,
-        owed: sql<number>`coalesce(sum(${channels.cumulative}), 0) - ${sellers.paidOut} - ${sellers.pendingPayout}`.mapWith(Number),
+        // refunds out, open disputes held back
+        owed: sql<number>`coalesce(sum(${channels.cumulative}), 0) - ${sellers.paidOut} - ${sellers.pendingPayout} - ${refundedOf(sellers.id)} - ${heldOf(sellers.id)}`.mapWith(Number),
       })
       .from(sellers)
       .leftJoin(channels, eq(channels.sellerId, sellers.id))

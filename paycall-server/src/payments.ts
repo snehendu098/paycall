@@ -1,4 +1,5 @@
 import { and, eq, gte, sql } from 'drizzle-orm'
+import { spentToday } from './ledger'
 import { z } from 'zod'
 import type { DB } from './db'
 import { agents, approvals, channels, entries, owners } from './db/schema'
@@ -63,19 +64,10 @@ export async function checkPayment(db: DB, sellerId: string, { paymentPayload, p
     return fail('stale_voucher')
 
   if (owner.balance < amount) return fail('insufficient_funds')
-  const [{ spent }] = await db
-    .select({ spent: sql<number>`coalesce(sum(${entries.amount}), 0)`.mapWith(Number) })
-    .from(entries)
-    .where(and(eq(entries.ownerId, owner.id), eq(entries.type, 'charge'), gte(entries.createdAt, sql`date_trunc('day', now())`)))
-  // ponytail: cap checked outside tx, parallel calls can overshoot by one call. balance never can.
-  if (spent + amount > owner.dailyCap) return fail('daily_cap_exceeded')
-  if (agent.dailyCap !== null) {
-    const [{ agentSpent }] = await db
-      .select({ agentSpent: sql<number>`coalesce(sum(${entries.amount}), 0)`.mapWith(Number) })
-      .from(entries)
-      .where(and(eq(entries.agentPubkey, agent.pubkey), eq(entries.type, 'charge'), gte(entries.createdAt, sql`date_trunc('day', now())`)))
-    if (agentSpent + amount > agent.dailyCap) return fail('agent_daily_cap_exceeded')
-  }
+  // ponytail: caps checked outside tx, parallel calls can overshoot by one call. balance never can.
+  if ((await spentToday(db, { ownerId: owner.id })) + amount > owner.dailyCap) return fail('daily_cap_exceeded')
+  if (agent.dailyCap !== null && (await spentToday(db, { agentPubkey: agent.pubkey })) + amount > agent.dailyCap)
+    return fail('agent_daily_cap_exceeded')
 
   const needsApproval = agent.approveAbove !== null && amount > agent.approveAbove
   if (needsApproval) {
@@ -90,8 +82,21 @@ export async function checkPayment(db: DB, sellerId: string, { paymentPayload, p
   return { ok: true as const, voucher: v, amount, owner, needsApproval }
 }
 
-// x402 /settle: one tx, db constraints guard money
-export async function settlePayment(db: DB, sellerId: string, body: PaymentBody) {
+// exact last voucher again (client retry after lost response) → that result, no second charge
+async function priorSettle(db: DB, sellerId: string, v: Voucher) {
+  const [row] = await db
+    .select({ entryId: entries.id, ownerId: entries.ownerId })
+    .from(channels)
+    .innerJoin(entries, eq(entries.ref, sql`'ch:' || ${channels.id} || ':' || ${channels.seq}`))
+    .where(and(eq(channels.id, v.channelId), eq(channels.sellerId, sellerId), eq(channels.agentPubkey, v.payer), eq(channels.seq, v.seq), eq(channels.lastSig, v.sig)))
+  if (!row || !(await verifyVoucher(v))) return // fields must still match the sig
+  return { ok: true as const, entryId: row.entryId, payer: v.payer, ownerId: row.ownerId!, needsReload: false, duplicate: true }
+}
+
+// x402 /settle: one tx, db constraints guard money. meta lands on the charge entry
+export async function settlePayment(db: DB, sellerId: string, body: PaymentBody, meta: { resource?: string } = {}) {
+  const prior = await priorSettle(db, sellerId, body.paymentPayload.payload)
+  if (prior) return prior
   const check = await checkPayment(db, sellerId, body)
   if (!check.ok) return check
   const { voucher: v, amount, owner } = check
@@ -100,7 +105,7 @@ export async function settlePayment(db: DB, sellerId: string, body: PaymentBody)
     return await db.transaction(async (tx) => {
       const [entry] = await tx
         .insert(entries)
-        .values({ type: 'charge', amount, ownerId: owner.id, sellerId, agentPubkey: v.payer, ref: `ch:${v.channelId}:${v.seq}` })
+        .values({ type: 'charge', amount, ownerId: owner.id, sellerId, agentPubkey: v.payer, ref: `ch:${v.channelId}:${v.seq}`, resource: meta.resource })
         .onConflictDoNothing()
         .returning({ id: entries.id })
       if (!entry) throw new Rollback('duplicate_voucher')
@@ -157,6 +162,7 @@ export async function settlePayment(db: DB, sellerId: string, body: PaymentBody)
         payer: v.payer,
         ownerId: owner.id,
         needsReload: !!owner.vaultId && debited.balance < owner.reloadBelow,
+        duplicate: false,
       }
     })
   } catch (e) {

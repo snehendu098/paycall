@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { McpProps } from './controllers/oauth.controller'
 import { connect } from './db'
 import { agents, entries, owners } from './db/schema'
+import { spentToday } from './ledger'
 import { searchCatalog } from './controllers/catalog.controller'
 import { toDollars } from './lib/util'
 
@@ -81,10 +82,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
     try {
       const [o] = await db.select().from(owners).where(eq(owners.id, props.ownerId))
       const [a] = await db.select().from(agents).where(eq(agents.pubkey, props.agentPubkey))
-      const [{ today }] = await db
-        .select({ today: sql<number>`coalesce(sum(${entries.amount}), 0)::bigint`.mapWith(Number) })
-        .from(entries)
-        .where(and(eq(entries.ownerId, props.ownerId), eq(entries.type, 'charge'), gte(entries.createdAt, sql`date_trunc('day', now())`)))
+      const today = await spentToday(db, { ownerId: props.ownerId })
       if (!o || !a) return text('agent not found: reconnect PayCall', true)
       return text(
         [

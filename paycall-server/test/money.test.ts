@@ -2,7 +2,8 @@
 import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { connect } from '../src/db'
-import { agents, channels, owners, payoutBatches, payoutItems, sellers, topups } from '../src/db/schema'
+import { agents, channels, entries, owners, payoutBatches, payoutItems, sellers, topups } from '../src/db/schema'
+import { heldOf, openDispute, refund, refundedOf, resolveDispute, spentToday } from '../src/ledger'
 import { b64url } from '../src/lib/util'
 import { signVoucher } from '../src/lib/voucher'
 import { applyPayoutItem } from '../src/payouts'
@@ -45,10 +46,46 @@ test('sequential calls debit + advance channel', async () => {
   expect([ch.seq, ch.cumulative]).toEqual([2, 2 * PRICE])
 })
 
-test('replay rejected', async () => {
-  await pay(1, PRICE)
-  expect(await pay(1, PRICE)).toEqual({ ok: false, reason: 'stale_voucher' })
+test('idempotent: exact same voucher → original result, no 2nd charge; other voucher same seq → stale', async () => {
+  const first = await pay(1, PRICE)
+  const again = await pay(1, PRICE, PRICE, (b) => (b.paymentPayload.payload = (first as any).voucher ?? b.paymentPayload.payload))
+  expect(again).toMatchObject({ ok: true, duplicate: true, entryId: (first as { entryId: number }).entryId })
   expect(await balance()).toBe(15_000)
+  expect(await pay(1, PRICE, PRICE, (b) => (b.paymentPayload.payload.expiry += 7))).toMatchObject({ ok: false }) // resigned ≠ settled sig
+  expect(await balance()).toBe(15_000)
+})
+
+test('refunds: partial, rest, never above charge; caps + payouts net them', async () => {
+  const c = (await pay(1, PRICE)) as { entryId: number }
+  expect(await refund(db, c.entryId, 'sel_x', 1, 't0')).toMatchObject({ ok: false, reason: 'unknown_charge' }) // other seller
+  expect(await refund(db, c.entryId, 'sel_1', 4_000, 't1')).toMatchObject({ ok: true, amount: 4_000, left: 6_000 })
+  expect(await refund(db, c.entryId, 'sel_1', 4_000, 't1')).toMatchObject({ ok: false, reason: 'duplicate_refund' })
+  expect(await refund(db, c.entryId, 'sel_1', 7_000, 't2')).toMatchObject({ ok: false, reason: 'refund_exceeds_charge' })
+  expect(await refund(db, c.entryId, 'sel_1', 'rest', 't3')).toMatchObject({ ok: true, amount: 6_000 })
+  expect(await refund(db, c.entryId, 'sel_1', 'rest', 't4')).toMatchObject({ ok: false, reason: 'already_refunded' })
+  expect(await balance()).toBe(25_000)
+  expect(await spentToday(db, { ownerId: 'own_1' })).toBe(0)
+  const [{ r }] = await db.select({ r: refundedOf('sel_1') }).from(sellers)
+  expect(r).toBe(PRICE)
+})
+
+test('disputes: open holds, reject releases, refund pays back; window + dup guarded', async () => {
+  const c = (await pay(1, PRICE)) as { entryId: number }
+  expect(await openDispute(db, 'own_x', c.entryId, 'x')).toMatchObject({ ok: false, reason: 'unknown_charge' })
+  const d = (await openDispute(db, 'own_1', c.entryId, 'garbage response')) as { ok: true; dispute: { id: number; amount: number } }
+  expect(d.dispute.amount).toBe(PRICE)
+  expect(await openDispute(db, 'own_1', c.entryId, 'again')).toMatchObject({ ok: false, reason: 'already_disputed' })
+  const held = async () => (await db.select({ h: heldOf('sel_1') }).from(sellers))[0]!.h
+  expect(await held()).toBe(PRICE)
+  expect(await resolveDispute(db, 'sel_x', d.dispute.id, 'refund')).toMatchObject({ ok: false })
+  expect(await resolveDispute(db, 'sel_1', d.dispute.id, 'refund')).toMatchObject({ ok: true })
+  expect(await held()).toBe(0)
+  expect(await balance()).toBe(25_000)
+  expect(await resolveDispute(db, 'sel_1', d.dispute.id, 'reject')).toMatchObject({ ok: false }) // already resolved
+
+  const c2 = (await pay(2, 2 * PRICE)) as { entryId: number }
+  await db.update(entries).set({ createdAt: new Date(Date.now() - 8 * 86_400_000) }).where(eq(entries.id, c2.entryId))
+  expect(await openDispute(db, 'own_1', c2.entryId, 'late')).toMatchObject({ ok: false, reason: 'dispute_window_closed' })
 })
 
 test('parallel double-spend → exactly one wins', async () => {
