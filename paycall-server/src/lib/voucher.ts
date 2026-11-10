@@ -32,3 +32,15 @@ export async function verifyVoucher(v: Voucher) {
     return false
   }
 }
+
+// pass access without paying: PAYCALL-AGENT: <pubkey>.<unix ts>.<sig over "paycall-agent:<ts>:<METHOD>:<url>">
+// ponytail: replayable within the 5 min window by whoever sees the header; nonce store if passes get valuable
+export async function verifyAgentHeader(h: string | undefined, method: string, url: string) {
+  const [payer, ts, sig] = h?.split('.') ?? []
+  if (!payer || !sig || !/^\d+$/.test(ts ?? '') || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return
+  try {
+    const key = await crypto.subtle.importKey('raw', fromB64url(payer), 'Ed25519', false, ['verify'])
+    const ok = await crypto.subtle.verify('Ed25519', key, fromB64url(sig), new TextEncoder().encode(`paycall-agent:${ts}:${method.toUpperCase()}:${url}`))
+    return ok ? payer : undefined
+  } catch {}
+}

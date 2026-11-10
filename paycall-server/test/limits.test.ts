@@ -21,7 +21,8 @@ const keys = (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'
 const pubkey = b64url(new Uint8Array((await crypto.subtle.exportKey('raw', keys.publicKey)) as ArrayBuffer))
 const PRICE = 10_000
 const SK = 'svc_test_key'
-const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: SK, BETTER_AUTH_SECRET: 'test-secret', ADMIN_KEY: 'adm' } as unknown as CloudflareBindings
+const KV = { get: async () => null, put: async () => {} }
+const env = { HYPERDRIVE: { connectionString }, KV, PAYCALL_SERVICE_KEY: SK, BETTER_AUTH_SECRET: 'test-secret', ADMIN_KEY: 'adm' } as unknown as CloudflareBindings
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
 const fetchW = (path: string, init: RequestInit = {}) => worker.fetch(new Request(`http://localhost${path}`, init), env, ctx)
 const owner = (path: string, body?: unknown) =>
@@ -111,4 +112,15 @@ test('upstream auth: sealed, never returned, injected over caller header; admin 
   expect((await adm({ verified: true })).status).toBe(200)
   const [l] = (await (await fetchW('/catalog')).json()) as { verified: boolean }[]
   expect(l!.verified).toBe(true)
+})
+
+test('endpoint pricing modes validated as a unit', async () => {
+  const patch = (b: unknown) =>
+    fetchW('/endpoints/ep_1', { method: 'PATCH', headers: { authorization: `Bearer ${SK}`, 'x-paycall-as': 'seller:sel_1', 'content-type': 'application/json' }, body: JSON.stringify(b) })
+  expect((await patch({ pricing: 'token' })).status).toBe(400) // needs maxAmount
+  expect((await patch({ pricing: 'pass', passSeconds: 5 })).status).toBe(400)
+  expect(await (await patch({ pricing: 'char', maxAmount: 50_000, price: 2 })).json()).toMatchObject({ pricing: 'char', maxAmount: 50_000, price: 2, passSeconds: null })
+  expect(await (await patch({ pricing: 'pass', passSeconds: 3600 })).json()).toMatchObject({ pricing: 'pass', maxAmount: null, passSeconds: 3600 })
+  expect(await (await patch({ name: 'x' })).json()).toMatchObject({ pricing: 'pass', name: 'x' })
+  expect(await (await patch({ pricing: 'call' })).json()).toMatchObject({ pricing: 'call', passSeconds: null })
 })

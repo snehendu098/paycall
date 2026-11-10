@@ -2,7 +2,7 @@
 import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { connect } from '../src/db'
-import { agents, endpoints, owners, sellers } from '../src/db/schema'
+import { agents, endpoints, entries, owners, sellers } from '../src/db/schema'
 import worker from '../src/index'
 import { b64url } from '../src/lib/util'
 import { signVoucher } from '../src/lib/voucher'
@@ -15,6 +15,11 @@ const upstream = Bun.serve({
   fetch: (req) => {
     const u = new URL(req.url)
     if (u.pathname === '/boom') return new Response('nope', { status: 500 })
+    if (u.pathname === '/llm') return Response.json({ text: 'hi', usage: { output_tokens: 300 } })
+    if (u.pathname === '/sse') {
+      const ev = (t: string) => `data: ${JSON.stringify({ delta: { text: t } })}\n\n`
+      return new Response(ev('hello') + ev('world') + ev('again') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
+    }
     return Response.json({ path: u.pathname, q: u.searchParams.get('q'), auth: req.headers.get('authorization') })
   },
 })
@@ -27,8 +32,12 @@ const keys = (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'
 const pubkey = b64url(new Uint8Array((await crypto.subtle.exportKey('raw', keys.publicKey)) as ArrayBuffer))
 const channelId = crypto.randomUUID()
 const PRICE = 10_000
-const env = { HYPERDRIVE: { connectionString } } as unknown as CloudflareBindings
-const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
+const store = new Map<string, string>()
+const KV = { get: async (k: string, t?: string) => (store.has(k) ? (t === 'json' ? JSON.parse(store.get(k)!) : store.get(k)) : null), put: async (k: string, v: string) => void store.set(k, v) }
+const env = { HYPERDRIVE: { connectionString }, KV, BETTER_AUTH_SECRET: 'test' } as unknown as CloudflareBindings
+const pending: Promise<unknown>[] = []
+const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException() {} } as unknown as ExecutionContext
+const settled = () => Promise.all(pending.splice(0))
 const b64 = (o: unknown) => btoa(JSON.stringify(o))
 const unb64 = (s: string | null) => JSON.parse(atob(s!))
 
@@ -41,8 +50,8 @@ beforeEach(async () => {
   await db.insert(endpoints).values({ id: 'ep_1', sellerId: 'sel_1', name: 'echo', upstreamUrl: `http://localhost:${upstream.port}`, price: PRICE })
 })
 
-async function voucherHeader(seq: number, cumulative: number) {
-  const accepted = { scheme: SCHEME, network: NETWORK, amount: String(PRICE), asset: 'USD', payTo: 'sel_1' }
+async function voucherHeader(seq: number, cumulative: number, amount = PRICE) {
+  const accepted = { scheme: SCHEME, network: NETWORK, amount: String(amount), asset: 'USD', payTo: 'sel_1' }
   const payload = await signVoucher(
     { channelId, payer: pubkey, payTo: 'sel_1', cumulativeAmount: String(cumulative), currency: 'USD', seq, expiry: (Date.now() / 1000 + 60) | 0 },
     keys.privateKey,
@@ -50,8 +59,16 @@ async function voucherHeader(seq: number, cumulative: number) {
   return b64({ x402Version: 2, accepted, payload })
 }
 
-const call = (path: string, sig?: string) =>
-  worker.fetch(new Request(`http://localhost/p/ep_1${path}`, { headers: { authorization: 'Bearer secret', ...(sig && { 'PAYMENT-SIGNATURE': sig }) } }), env, ctx)
+const call = (path: string, sig?: string, h: Record<string, string> = {}) =>
+  worker.fetch(new Request(`http://localhost/p/ep_1${path}`, { headers: { authorization: 'Bearer secret', ...(sig && { 'PAYMENT-SIGNATURE': sig }), ...h } }), env, ctx)
+const setEp = (v: Partial<typeof endpoints.$inferInsert>) => db.update(endpoints).set(v).where(eq(endpoints.id, 'ep_1'))
+const agentHeader = async (url: string, k = keys) => {
+  const ts = Math.floor(Date.now() / 1000)
+  const pk = b64url(new Uint8Array((await crypto.subtle.exportKey('raw', k.publicKey)) as ArrayBuffer))
+  const sig = new Uint8Array(await crypto.subtle.sign('Ed25519', k.privateKey, new TextEncoder().encode(`paycall-agent:${ts}:GET:${url}`)))
+  return { 'paycall-agent': `${pk}.${ts}.${b64url(sig)}` }
+}
+const refunds = async () => (await db.select().from(entries).where(eq(entries.type, 'refund'))).map((e) => e.amount)
 const balance = async () => (await db.select().from(owners).where(eq(owners.id, 'own_1')))[0].balance
 
 test('unpaid → 402 + PAYMENT-REQUIRED', async () => {
@@ -78,11 +95,73 @@ test('upstream 500 → passthrough, no charge', async () => {
   expect(await balance()).toBe(25_000)
 })
 
-test('replay → 402', async () => {
+test('retry same paid request → stored response replayed, charged once; altered voucher → 402', async () => {
   const sig = await voucherHeader(1, PRICE)
-  expect((await call('', sig)).status).toBe(200)
-  const res = await call('', sig)
-  expect(res.status).toBe(402)
-  expect(unb64(res.headers.get('payment-required')).error).toBe('stale_voucher')
+  const first = await call('/a', sig)
+  expect(first.status).toBe(200)
+  await settled()
+  const again = await call('/a', sig)
+  expect(again.status).toBe(200)
+  expect(again.headers.get('paycall-replay')).toBe('1')
+  expect(again.headers.get('payment-response')).toBe(first.headers.get('payment-response'))
+  expect(await again.json()).toEqual({ path: '/a', q: null, auth: null })
+  expect(await balance()).toBe(15_000)
+  const forged = unb64(sig)
+  forged.payload.expiry += 9 // same seq, sig no longer matches
+  expect((await call('/a', b64(forged))).status).toBe(402)
+  expect(await balance()).toBe(15_000)
+})
+
+test('metered per token: sign cap, charge reported usage, refund rest, signed receipt', async () => {
+  await setEp({ pricing: 'token', price: 10, maxAmount: 10_000 }) // $0.00001/token, cap 1¢
+  const pr = unb64((await call('/llm')).headers.get('payment-required'))
+  expect(pr.accepts[0]).toMatchObject({ amount: '10000', extra: { pricing: { unit: 'token', rate: '10', max: '10000' } } })
+  const res = await call('/llm', await voucherHeader(1, 10_000))
+  expect(res.status).toBe(200)
+  const pay = unb64(res.headers.get('payment-response'))
+  expect(pay).toMatchObject({ amount: '3000', units: 300, refunded: '7000' })
+  expect(await balance()).toBe(22_000)
+  expect(await refunds()).toEqual([7_000])
+
+  // receipt: EdDSA over header.payload, key from jwks
+  const [h, p, s] = pay.receipt.split('.')
+  const { keys: [jwk] } = (await (await worker.fetch(new Request('http://localhost/.well-known/jwks.json'), env, ctx)).json()) as { keys: JsonWebKey[] }
+  const key = await crypto.subtle.importKey('jwk', jwk!, 'Ed25519', false, ['verify'])
+  const fromB64 = (x: string) => Uint8Array.from(atob(x.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0))
+  expect(await crypto.subtle.verify('Ed25519', key, fromB64(s), new TextEncoder().encode(`${h}.${p}`))).toBe(true)
+  expect(JSON.parse(new TextDecoder().decode(fromB64(p)))).toMatchObject({ amount: '3000', units: 300, payer: pubkey, payTo: 'sel_1' })
+})
+
+test('metered sse per char: streams, counts, receipt event; cut at cap', async () => {
+  await setEp({ pricing: 'char', price: 10, maxAmount: 10_000 })
+  let res = await call('/sse', await voucherHeader(1, 10_000))
+  let text = await res.text()
+  expect(text).toContain('again')
+  const ev = JSON.parse(text.split('event: paycall-receipt\ndata: ')[1]!.split('\n')[0]!)
+  expect(ev).toMatchObject({ amount: '150', units: 15, cut: false, refunded: '9850' })
+  expect(ev.receipt.split('.')).toHaveLength(3)
+  expect(await balance()).toBe(25_000 - 150)
+
+  await setEp({ price: 100, maxAmount: 1_000 }) // 10 chars max
+  res = await call('/sse', await voucherHeader(2, 11_000, 1_000))
+  text = await res.text()
+  expect(text).toContain('world')
+  expect(text).not.toContain('again')
+  expect(JSON.parse(text.split('data: ').at(-1)!)).toMatchObject({ amount: '1000', units: 10, cut: true, refunded: '0' })
+  expect(await balance()).toBe(25_000 - 150 - 1_000)
+})
+
+test('time pass: pay once, then signed identity rides free until expiry', async () => {
+  await setEp({ pricing: 'pass', price: PRICE, passSeconds: 60 })
+  const url = 'http://localhost/p/ep_1/a'
+  expect(unb64((await call('/a', undefined, await agentHeader(url))).headers.get('payment-required')).accepts[0].extra.pass).toEqual({ seconds: 60 })
+  const bought = await call('/a', await voucherHeader(1, PRICE))
+  expect(unb64(bought.headers.get('payment-response')).pass.expiresAt).toBeTruthy()
+  const free = await call('/a', undefined, await agentHeader(url))
+  expect(free.status).toBe(200)
+  expect(unb64(free.headers.get('payment-response')).pass).toBeTruthy()
+  const stranger = (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])) as CryptoKeyPair
+  expect((await call('/a', undefined, await agentHeader(url, stranger))).status).toBe(402)
+  expect((await call('/b', undefined, await agentHeader(url))).status).toBe(402) // sig bound to url
   expect(await balance()).toBe(15_000)
 })

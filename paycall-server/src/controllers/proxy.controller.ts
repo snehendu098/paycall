@@ -1,14 +1,22 @@
 import type { Context } from 'hono'
-import { eq } from 'drizzle-orm'
-import { endpoints } from '../db/schema'
+import { and, eq, gt, sql } from 'drizzle-orm'
+import { agents, endpoints, passes } from '../db/schema'
+import { refund } from '../ledger'
 import { factory } from '../lib/factory'
+import { cost, countBody, meterStream, type Unit } from '../lib/meter'
+import { signReceipt, type Receipt } from '../lib/receipt'
 import { unseal } from '../lib/seal'
+import { sha256 } from '../lib/util'
+import { verifyAgentHeader } from '../lib/voucher'
 import { checkPayment, NETWORK, PaymentBody, SCHEME, settlePayment } from '../payments'
 import { reloadAfterSettle } from '../topups'
 import type { AppEnv } from '../types'
 
+type Endpoint = typeof endpoints.$inferSelect
 const b64json = (o: unknown) => btoa(JSON.stringify(o))
-const DROP_REQ = /^(host|authorization|cookie|payment-.*|cf-.*|x-forwarded-.*)$/i
+const DROP_REQ = /^(host|authorization|cookie|payment-.*|paycall-.*|cf-.*|x-forwarded-.*)$/i
+const IDEM_TTL = 3600
+const IDEM_MAX = 512 * 1024
 
 const paymentRequired = (c: Context<AppEnv>, error: string, accepts: unknown) => {
   const pr = { x402Version: 2, error, resource: { url: c.req.url }, accepts: [accepts] }
@@ -16,30 +24,68 @@ const paymentRequired = (c: Context<AppEnv>, error: string, accepts: unknown) =>
 }
 
 // upstream headers minus encoding/length (fetch already decoded body)
-const relay = (res: Response, extra: Record<string, string> = {}) => {
+const relay = (res: Response, extra: Record<string, string> = {}, body: BodyInit | null = res.body) => {
   const headers = new Headers(res.headers)
   headers.delete('content-encoding')
   headers.delete('content-length')
   for (const [k, v] of Object.entries(extra)) headers.set(k, v)
-  return new Response(res.body, { status: res.status, headers })
+  return new Response(body, { status: res.status, headers })
 }
 
-// x402 order: verify → upstream → settle
-export const forward = factory.createHandlers(async (c) => {
-  const id = c.req.param('endpointId')!
-  const [ep] = await c.var.db.select().from(endpoints).where(eq(endpoints.id, id))
-  if (!ep) return c.json({ error: 'unknown endpoint' }, 404)
-
+async function upstream(c: Context<AppEnv>, ep: Endpoint, body: ArrayBuffer | undefined) {
   const url = new URL(c.req.url)
-  const requirements = {
+  const headers = new Headers()
+  c.req.raw.headers.forEach((v, k) => DROP_REQ.test(k) || headers.set(k, v))
+  // seller keys win over caller's
+  if (ep.upstreamHeaders) for (const [k, v] of Object.entries(JSON.parse(await unseal(c.env.BETTER_AUTH_SECRET, ep.upstreamHeaders)) as Record<string, string>)) headers.set(k, v)
+  const rest = url.pathname.slice(url.pathname.indexOf(ep.id) + ep.id.length)
+  return fetch(ep.upstreamUrl + rest + url.search, { method: c.req.method, headers, body, signal: AbortSignal.timeout(30_000) })
+}
+
+const requirementsOf = (ep: Endpoint, origin: string) => {
+  const metered = ep.pricing === 'token' || ep.pricing === 'char'
+  return {
     scheme: SCHEME,
     network: NETWORK,
-    amount: String(ep.price),
+    amount: String(metered ? ep.maxAmount! : ep.price), // metered: agent signs the cap, unused part refunded
     asset: 'USD',
     payTo: ep.sellerId,
     maxTimeoutSeconds: 60,
-    extra: { facilitator: url.origin },
+    extra: {
+      facilitator: origin,
+      ...(metered && { pricing: { unit: ep.pricing, rate: String(ep.price), max: String(ep.maxAmount) } }),
+      ...(ep.pricing === 'pass' && { pass: { seconds: ep.passSeconds } }),
+    },
   } as const
+}
+
+// x402 order: verify → upstream → settle (metered: settle cap, refund unused after counting)
+export const forward = factory.createHandlers(async (c) => {
+  const db = c.var.db
+  const id = c.req.param('endpointId')!
+  const [ep] = await db.select().from(endpoints).where(eq(endpoints.id, id))
+  if (!ep) return c.json({ error: 'unknown endpoint' }, 404)
+  const origin = new URL(c.req.url).origin
+  const requirements = requirementsOf(ep, origin)
+  const method = c.req.method
+  const reqBody = method === 'GET' || method === 'HEAD' ? undefined : await c.req.arrayBuffer()
+
+  // pass holder: signed identity, no payment
+  if (ep.pricing === 'pass') {
+    const payer = await verifyAgentHeader(c.req.header('paycall-agent'), method, c.req.url)
+    if (payer) {
+      const [p] = await db
+        .select({ expiresAt: passes.expiresAt })
+        .from(passes)
+        .innerJoin(agents, eq(agents.pubkey, passes.agentPubkey))
+        .where(and(eq(passes.agentPubkey, payer), eq(passes.endpointId, ep.id), gt(passes.expiresAt, sql`now()`), eq(agents.paused, false)))
+      if (p) {
+        const res = await upstream(c, ep, reqBody).catch(() => null)
+        if (!res) return c.json({ error: 'upstream_unreachable' }, 502)
+        return relay(res, { 'PAYMENT-RESPONSE': b64json({ success: true, payer, pass: { expiresAt: p.expiresAt } }) })
+      }
+    }
+  }
 
   const sig = c.req.header('payment-signature')
   if (!sig) return paymentRequired(c, 'payment_required', requirements)
@@ -53,35 +99,91 @@ export const forward = factory.createHandlers(async (c) => {
   if (!parsed.success) return paymentRequired(c, 'invalid_payload', requirements)
   const body: PaymentBody = { x402Version: 2, paymentPayload: parsed.data, paymentRequirements: requirements }
 
-  const check = await checkPayment(c.var.db, ep.sellerId, body, c.req.url)
-  if (!check.ok) return paymentRequired(c, check.reason, requirements)
+  const idemKey = `idem:${await sha256(sig)}`
+  const check = await checkPayment(db, ep.sellerId, body, c.req.url)
+  if (!check.ok) {
+    // same paid request retried (response lost) → replay stored response, never re-run upstream
+    if (check.reason === 'stale_voucher') {
+      const hit = await c.env.KV.get<{ status: number; headers: [string, string][]; body: string }>(idemKey, 'json')
+      if (hit) return new Response(Uint8Array.from(atob(hit.body), (ch) => ch.charCodeAt(0)), { status: hit.status, headers: [...hit.headers, ['paycall-replay', '1']] })
+    }
+    return paymentRequired(c, check.reason, requirements)
+  }
 
-  const headers = new Headers()
-  c.req.raw.headers.forEach((v, k) => DROP_REQ.test(k) || headers.set(k, v))
-  // seller keys win over caller's
-  if (ep.upstreamHeaders) for (const [k, v] of Object.entries(JSON.parse(await unseal(c.env.BETTER_AUTH_SECRET, ep.upstreamHeaders)) as Record<string, string>)) headers.set(k, v)
-  const rest = url.pathname.slice(url.pathname.indexOf(id) + id.length)
-  const method = c.req.method
   let res: Response
   try {
-    res = await fetch(ep.upstreamUrl + rest + url.search, {
-      method,
-      headers,
-      body: method === 'GET' || method === 'HEAD' ? undefined : await c.req.arrayBuffer(),
-      signal: AbortSignal.timeout(30_000),
-    })
+    res = await upstream(c, ep, reqBody)
   } catch {
     return c.json({ error: 'upstream_unreachable' }, 502)
   }
-  // upstream fail → no charge
-  if (!res.ok) return relay(res)
+  if (!res.ok) return relay(res) // upstream fail → no charge
 
-  const r = await settlePayment(c.var.db, ep.sellerId, body)
+  const signed = Number(requirements.amount)
+  const r = await settlePayment(db, ep.sellerId, body, { resource: c.req.url })
   if (!r.ok) {
-    // not paid → withhold body
-    await res.body?.cancel()
+    await res.body?.cancel() // not paid → withhold body
     return paymentRequired(c, r.reason, requirements)
   }
   reloadAfterSettle(c, r)
-  return relay(res, { 'PAYMENT-RESPONSE': b64json({ success: true, payer: r.payer, transaction: String(r.entryId), network: NETWORK }) })
+
+  let passUntil: Date | undefined
+  if (ep.pricing === 'pass') {
+    const [p] = await db
+      .insert(passes)
+      .values({ agentPubkey: r.payer, endpointId: ep.id, expiresAt: sql`now() + make_interval(secs => ${ep.passSeconds})` })
+      .onConflictDoUpdate({ target: [passes.agentPubkey, passes.endpointId], set: { expiresAt: sql`greatest(${passes.expiresAt}, now()) + make_interval(secs => ${ep.passSeconds})` } })
+      .returning({ expiresAt: passes.expiresAt })
+    passUntil = p!.expiresAt
+  }
+
+  const receipt = (amount: number, units?: number) =>
+    signReceipt(c.env.BETTER_AUTH_SECRET, {
+      iss: origin, sub: String(r.entryId), payer: r.payer, payTo: ep.sellerId, resource: c.req.url, amount: String(amount), units, pass: passUntil?.toISOString(), iat: Math.floor(Date.now() / 1000),
+    } satisfies Receipt)
+  const paid = (amount: number, extra: object = {}) => ({ success: true, payer: r.payer, transaction: String(r.entryId), network: NETWORK, amount: String(amount), ...extra })
+  // settle + refund are idempotent per voucher, so a duplicate settle must not refund twice
+  const refundUnused = (dbx: typeof db, charged: number) =>
+    signed > charged && !r.duplicate ? refund(dbx, r.entryId, ep.sellerId, signed - charged, 'unused') : undefined
+
+  const metered = ep.pricing === 'token' || ep.pricing === 'char'
+  const stream = res.headers.get('content-type')?.startsWith('text/event-stream')
+
+  if (metered && stream) {
+    // stream now, count as it flows; refund + receipt when it ends (own conn lifetime: index.ts skips close for sse)
+    const rate = ep.price
+    const meter = meterStream(ep.pricing as Unit, rate, signed, async (units, cut) => {
+      const charged = cost(units, rate, signed)
+      try {
+        await refundUnused(db, charged)
+        const jws = await receipt(charged, units)
+        return `event: paycall-receipt\ndata: ${JSON.stringify(paid(charged, { units, cut, refunded: String(signed - charged), receipt: jws }))}\n\n`
+      } finally {
+        c.executionCtx.waitUntil(c.var.closeDb())
+      }
+    })
+    return relay(res, { 'PAYMENT-RESPONSE': b64json(paid(signed, { metered: true, max: String(signed) })) }, res.body!.pipeThrough(meter))
+  }
+
+  const passInfo = passUntil && { pass: { expiresAt: passUntil } }
+  // fixed price + streamed/unknown-size body: pass through untouched, no replay cache
+  const len = Number(res.headers.get('content-length') ?? NaN)
+  if (!metered && (stream || !(len <= IDEM_MAX)))
+    return relay(res, { 'PAYMENT-RESPONSE': b64json(paid(signed, { ...passInfo, receipt: await receipt(signed) })) })
+
+  const buf = new Uint8Array(await res.arrayBuffer())
+  let charged = signed
+  let units: number | undefined
+  if (metered) {
+    units = countBody(new TextDecoder().decode(buf), ep.pricing as Unit)
+    charged = cost(units, ep.price, signed)
+    await refundUnused(db, charged)
+  }
+  const header = b64json(paid(charged, { ...(metered && { units, refunded: String(signed - charged) }), ...passInfo, receipt: await receipt(charged, units) }))
+  const out = relay(res, { 'PAYMENT-RESPONSE': header }, buf)
+  if (buf.byteLength <= IDEM_MAX) {
+    let bin = ''
+    for (const b of buf) bin += String.fromCharCode(b)
+    c.executionCtx.waitUntil(c.env.KV.put(idemKey, JSON.stringify({ status: out.status, headers: [...out.headers], body: btoa(bin) }), { expirationTtl: IDEM_TTL }))
+  }
+  return out
 })
