@@ -13,10 +13,12 @@ type Tx = { req: AuthRequest; clientName: string | null }
 
 const TX_TTL_S = 600
 const SCOPES = ['mcp', 'offline_access']
-// phishing guard: any site can register a client via dcr/cimd, so only codes to local apps or claude.
-// ponytail: fixed allowlist, add hosts when other mcp clients need them
+// phishing guard: any site can register a client via dcr/cimd, so codes only to local apps or known mcp hosts.
+// loopback = claude code, codex, gemini cli, vs code. ponytail: fixed allowlist, add hosts as clients appear
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
-const okRedirect = (u: URL) => LOOPBACK.has(u.hostname) || /(^|\.)claude\.(ai|com)$/.test(u.hostname)
+const HOSTS = /(^|\.)(claude\.ai|claude\.com|chatgpt\.com|vscode\.dev)$/
+const APP_SCHEMES = new Set(['cursor:', 'vscode:', 'vscode-insiders:', 'windsurf:'])
+const okRedirect = (u: URL) => APP_SCHEMES.has(u.protocol) || ((u.protocol === 'https:' || LOOPBACK.has(u.hostname)) && (LOOPBACK.has(u.hostname) || HOSTS.test(u.hostname)))
 const txKey = (id: string) => `pctx:${id}` // prefix ≠ oauth lib keys
 
 // public GET /authorize (claude code opens this in browser)
@@ -29,7 +31,7 @@ export const authorize = factory.createHandlers(async (c) => {
     if (e instanceof AuthorizationError && e.redirectTo) return c.redirect(e.redirectTo)
     return c.text(`invalid authorization request: ${(e as Error).message}`, 400)
   }
-  if (!okRedirect(new URL(req.redirectUri))) return c.text('redirect_uri not allowed: PayCall only signs in local apps and Claude', 400)
+  if (!okRedirect(new URL(req.redirectUri))) return c.text('redirect_uri not allowed: PayCall only signs in local apps and known MCP clients', 400)
   const client = await oauth.lookupClient(req.clientId)
   const id = crypto.randomUUID()
   await c.env.OAUTH_KV.put(txKey(id), JSON.stringify({ req, clientName: client?.clientName ?? null } satisfies Tx), { expirationTtl: TX_TTL_S })

@@ -123,7 +123,9 @@ test('deny → access_denied; foreign redirect host rejected; expired tx 404', a
   expect(new URL(redirectTo).searchParams.get('error')).toBe('access_denied')
   expect((await svc(`/oauth/tx/${s.tx}`)).status).toBe(404)
 
-  const evil = await startAuth('https://evil.example/cb')
-  expect(evil.res.status).toBe(400)
+  for (const bad of ['https://evil.example/cb', 'http://chatgpt.com/cb', 'https://claude.ai.evil.example/cb', 'javascript://x', 'evilapp://cb'])
+    expect((await startAuth(bad)).res.status).toBe(400)
+  for (const good of ['cursor://anysphere.cursor-mcp/oauth/callback', 'https://chatgpt.com/connector_platform_oauth_redirect', 'https://vscode.dev/redirect', 'http://127.0.0.1:33418/'])
+    expect((await startAuth(good)).res.status).toBe(302)
   expect((await svc('/oauth/tx/nope')).status).toBe(404)
 })

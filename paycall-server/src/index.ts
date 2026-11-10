@@ -75,6 +75,7 @@ const provider = (origin: string) =>
     tokenEndpoint: '/oauth/token',
     clientRegistrationEndpoint: '/oauth/register',
     clientIdMetadataDocumentEnabled: true,
+    allowPrivateUseRedirectUris: true, // cursor:// vscode:// etc, gated by okRedirect
     scopesSupported: ['mcp', 'offline_access'],
     resourceMetadata: { resource: `${origin}/mcp`, resource_name: 'PayCall' },
   })
