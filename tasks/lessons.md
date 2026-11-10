@@ -1,0 +1,1 @@
+- Deps: only `bun install <pkg>` (`-d` dev). Never `bun add`, never pinned `pkg@ver`, never touch package.json/lock by hand. Check before any dep change.
