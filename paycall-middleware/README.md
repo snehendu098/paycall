@@ -64,3 +64,30 @@ app.get('/paid/joke', (req, res) => res.json({ joke: '...' }))
 ```sh
 bun scripts/demo.ts   # needs local paycall-server (wrangler dev --port 8798) + paycall-pg
 ```
+
+## Dynamic pricing
+
+`price` can be a function of the request (sync or async):
+
+```ts
+withPaycall(handler, { ...opts, price: (req) => (new URL(req.url).searchParams.get('size') === 'hd' ? '0.05' : '0.01') })
+```
+
+## Metered (pay for what you use)
+
+With `metered: true`, `price` is the **cap** the agent signs. Your handler reports actual use in `x-paycall-charge` (dollars). PayCall keeps that and refunds the rest to the buyer right away. The header is stripped before the reply goes out.
+
+```ts
+withPaycall(async (req) => {
+  const out = await runModel(req)
+  return Response.json(out, { headers: { 'x-paycall-charge': String(out.usage.output_tokens * 0.00001) } })
+}, { ...opts, metered: true, price: '0.05' })
+```
+
+The PayCall proxy does this automatically for `token` / `char` endpoints, including SSE streams (counted as they flow, cut at the cap, signed receipt in a final `event: paycall-receipt`).
+
+## Receipts, refunds, disputes
+
+- `PAYMENT-RESPONSE` carries `receipt`: an EdDSA JWS. Verify with `verifyReceipt(jws)` from `paycall-sdk` (keys at `{facilitator}/.well-known/jwks.json`).
+- Refund a charge: `POST {facilitator}/entries/<transaction>/refund` with your seller key, body `{ "amount": micros }` (omit = everything left).
+- Buyers can dispute a charge for 7 days; open disputes are held out of your payout until you refund or reject them (Earn → Disputes).
