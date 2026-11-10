@@ -41,6 +41,9 @@ PayPal sandbox app: Merchant type, Vault enabled, webhook → `https://<worker>/
 | `GET/PATCH /owners/me` | owner | balance, agents, reload + cap settings |
 | `POST /agents` · `PATCH /agents/:pubkey` | owner | register pubkey, pause, max price |
 | `GET /sellers/me` | seller | earned, owed, payouts |
+| `POST/GET /endpoints` · `DELETE /endpoints/:id` | seller | paid API endpoints (https upstream, price) |
+| `ANY /p/:endpointId/*` | x402 | paid proxy: 402 → `PAYMENT-SIGNATURE` → upstream → settle |
+| `GET /channels/:pubkey/:sellerId` | — | channel state (seq, cumulative) for next voucher |
 | `GET /entries` | owner/seller | ledger |
 | `GET /events?key=` | owner/seller | SSE live ledger |
 | `POST /topup/create` · `/topup/capture` | owner | PayPal top-up (vaults wallet first time) |

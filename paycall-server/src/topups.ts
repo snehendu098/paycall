@@ -1,9 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm'
+import type { Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import type { DB } from './db'
+import { withDb, type DB } from './db'
 import { entries, owners, topups } from './db/schema'
 import { paypal, type Order } from './lib/paypal'
 import { randomId, toDollars, toMicros } from './lib/util'
+import type { AppEnv } from './types'
 
 type Env = CloudflareBindings
 type Owner = typeof owners.$inferSelect
@@ -144,4 +146,10 @@ export async function autoReload(env: Env, db: DB, ownerId: string) {
     await failTopup(db, id)
     throw e
   }
+}
+
+// after settle. own conn: request conn closes before this finishes
+export function reloadAfterSettle(c: Context<AppEnv>, r: { needsReload: boolean; ownerId: string }) {
+  if (r.needsReload)
+    c.executionCtx.waitUntil(withDb(c.env.HYPERDRIVE.connectionString, (db) => autoReload(c.env, db, r.ownerId)).catch(console.error))
 }

@@ -5,9 +5,12 @@ import { connect } from './db'
 import { settleAll } from './payouts'
 import { adminRoute } from './routes/admin.route'
 import { agentRoute } from './routes/agent.route'
+import { channelRoute } from './routes/channel.route'
+import { endpointRoute } from './routes/endpoint.route'
 import { entryRoute } from './routes/entry.route'
 import { eventRoute } from './routes/event.route'
 import { ownerRoute } from './routes/owner.route'
+import { proxyRoute } from './routes/proxy.route'
 import { sellerRoute } from './routes/seller.route'
 import { topupRoute } from './routes/topup.route'
 import { webhookRoute } from './routes/webhook.route'
@@ -36,6 +39,9 @@ const app = new Hono<AppEnv>()
   .route('/topup', topupRoute)
   .route('/webhooks', webhookRoute)
   .route('/admin', adminRoute)
+  .route('/endpoints', endpointRoute)
+  .route('/channels', channelRoute)
+  .route('/p', proxyRoute)
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)
     if (pgCode(err) === '23505') return c.json({ error: 'already_exists' }, 409)

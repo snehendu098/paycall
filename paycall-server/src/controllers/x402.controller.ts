@@ -1,8 +1,7 @@
 import { zValidator } from '@hono/zod-validator'
-import { withDb } from '../db'
 import { factory } from '../lib/factory'
 import { checkPayment, NETWORK, PaymentBody, SCHEME, settlePayment } from '../payments'
-import { autoReload } from '../topups'
+import { reloadAfterSettle } from '../topups'
 
 export const supported = factory.createHandlers((c) =>
   c.json({ kinds: [{ x402Version: 2, scheme: SCHEME, network: NETWORK }], extensions: [], signers: {} }),
@@ -21,8 +20,6 @@ export const settle = factory.createHandlers(zValidator('json', PaymentBody), as
   const r = await settlePayment(c.var.db, c.var.principal.id, body)
   if (!r.ok) return c.json({ success: false, errorReason: r.reason, payer, transaction: '', network: NETWORK })
 
-  // own conn: request conn closes before this finishes
-  if (r.needsReload)
-    c.executionCtx.waitUntil(withDb(c.env.HYPERDRIVE.connectionString, (db) => autoReload(c.env, db, r.ownerId)).catch(console.error))
+  reloadAfterSettle(c, r)
   return c.json({ success: true, payer, transaction: String(r.entryId), network: NETWORK })
 })

@@ -1,5 +1,6 @@
 export * from './agent.schema'
 export * from './channel.schema'
+export * from './endpoint.schema'
 export * from './entry.schema'
 export * from './owner.schema'
 export * from './payout.schema'
