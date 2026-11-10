@@ -2,15 +2,15 @@
 
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { $, ago } from '@/lib/api'
+import { $, ago, type Dispute } from '@/lib/api'
 import { enable, pc } from '@/lib/pc'
 import { Btn, Code, Input } from '@/components/ds'
-import { Activity, LiveDot, useLedger } from '@/components/activity'
+import { Activity, Disputes, LiveDot, useLedger } from '@/components/activity'
 import { Act, Block, Empty, errMsg, Field, Nothing, Num, Page, PageSkeleton, PDialog, Skel, useApi, useUser } from '@/components/portal'
 import { EndpointList, NewEndpoint, type Endpoint } from './endpoints'
 
 type Payout = { id: string; gross: number; net: number; status: 'pending' | 'paid' | 'failed'; createdAt: string }
-type Me = { seller: { id: string; name: string; paypalEmail: string; paidOut: number; pendingPayout: number }; earned: number; owed: number; payouts: Payout[] }
+type Me = { seller: { id: string; name: string; paypalEmail: string; paidOut: number; pendingPayout: number }; earned: number; refunded: number; held: number; owed: number; payouts: Payout[] }
 
 const MIN = 500_000 // server payout threshold
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -66,8 +66,10 @@ const tone = { paid: 'text-live', pending: 'text-foreground', failed: 'text-dest
 function Earn() {
   const me = useApi<Me>('seller', 'sellers/me')
   const eps = useApi<Endpoint[]>('seller', 'endpoints')
-  const { rows, fresh, live } = useLedger('seller', () => me.reload())
+  const disputes = useApi<Dispute[]>('seller', 'disputes')
+  const { rows, fresh, live, refresh } = useLedger('seller', () => me.reload())
   const d = me.data
+  const changed = () => { me.reload(); disputes.reload(); refresh() }
 
   if (me.error && !d) return <Page><p className="text-sm text-destructive">Couldn&apos;t load your earnings: {me.error}</p></Page>
 
@@ -91,11 +93,14 @@ function Earn() {
             <>
               Payouts to <span className="text-foreground">{d.seller.paypalEmail}</span> every 10 min once owed ≥ $0.50 · 2% fee
               {d.seller.pendingPayout > 0 && <> · <span className="font-mono">{$(d.seller.pendingPayout)}</span> in flight</>}
+              {d.held > 0 && <> · <span className="font-mono text-foreground">{$(d.held)}</span> held for disputes</>}
               {d.owed >= MIN && <span className="text-live"> · next payout soon</span>}
             </>
           ) : <Skel className="h-4 w-80 max-w-full" />}
         </div>
       </section>
+
+      <Disputes role="seller" list={disputes.data} onChanged={changed} />
 
       <Block title="Endpoints" aside={<NewEndpoint onCreated={eps.reload} />}>
         <EndpointList list={eps.data} reload={eps.reload} />
@@ -122,7 +127,7 @@ function Earn() {
       <ApiKey />
 
       <Block title="Activity" aside={<LiveDot live={live} />}>
-        <Activity role="seller" rows={rows} fresh={fresh} />
+        <Activity role="seller" rows={rows} fresh={fresh} onChanged={changed} />
       </Block>
     </Page>
   )

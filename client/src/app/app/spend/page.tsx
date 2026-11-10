@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { $, ago, toDollars, toMicros } from '@/lib/api'
+import { $, ago, toDollars, toMicros, type Dispute } from '@/lib/api'
 import { enable, pc } from '@/lib/pc'
 import { Btn, Input } from '@/components/ds'
-import { Activity, LiveDot, useLedger } from '@/components/activity'
+import { Activity, Disputes, LiveDot, useLedger } from '@/components/activity'
 import { Act, Block, Empty, errMsg, Field, Num, Page, PageSkeleton, PDialog, Skel, useApi, useUser } from '@/components/portal'
 import { AddAgent, AgentList, type Agent } from './agents'
 import { TopUp } from './topup'
@@ -41,12 +41,13 @@ const sinceUtcMidnight = () => new Date().setUTCHours(0, 0, 0, 0)
 
 function Spend() {
   const me = useApi<Me>('buyer', 'owners/me')
-  const { rows, fresh, live } = useLedger('buyer', () => me.reload())
+  const disputes = useApi<Dispute[]>('buyer', 'disputes')
+  const { rows, fresh, live, refresh } = useLedger('buyer', (e) => { me.reload(); if (e.type === 'refund') disputes.reload() })
   const [settings, setSettings] = useState(false)
   const o = me.data?.owner
   const names = Object.fromEntries(me.data?.agents.map((a) => [a.pubkey, a.name]) ?? [])
-  // server cap window = UTC day (date_trunc on db clock)
-  const today = (rows ?? []).filter((e) => e.type === 'charge' && +new Date(e.createdAt) >= sinceUtcMidnight()).reduce((s, e) => s + e.amount, 0)
+  // server cap window = UTC day (date_trunc on db clock), net of refunds
+  const today = (rows ?? []).filter((e) => (e.type === 'charge' || e.type === 'refund') && +new Date(e.createdAt) >= sinceUtcMidnight()).reduce((s, e) => s + (e.type === 'charge' ? e.amount : -e.amount), 0)
 
   if (me.error && !me.data) return <Page><p className="text-sm text-destructive">Couldn&apos;t load your wallet: {me.error}</p></Page>
 
@@ -91,8 +92,10 @@ function Spend() {
       </Block>
 
       <Block title="Activity" aside={<LiveDot live={live} />}>
-        <Activity role="buyer" rows={rows} fresh={fresh} names={names} />
+        <Activity role="buyer" rows={rows} fresh={fresh} names={names} onChanged={() => { disputes.reload(); refresh() }} />
       </Block>
+
+      <Disputes role="buyer" list={disputes.data} onChanged={disputes.reload} />
     </Page>
   )
 }
