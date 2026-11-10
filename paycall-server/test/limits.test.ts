@@ -11,7 +11,7 @@ import { NETWORK, SCHEME } from '../src/payments'
 
 const connectionString = process.env.DATABASE_URL!
 const { db, close } = await connect(connectionString)
-const upstream = Bun.serve({ port: 0, fetch: () => Response.json({ ok: 1 }) })
+const upstream = Bun.serve({ port: 0, fetch: (r) => Response.json({ ok: 1, key: r.headers.get('x-api-key') }) })
 afterAll(async () => {
   upstream.stop()
   await close()
@@ -21,13 +21,14 @@ const keys = (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'
 const pubkey = b64url(new Uint8Array((await crypto.subtle.exportKey('raw', keys.publicKey)) as ArrayBuffer))
 const PRICE = 10_000
 const SK = 'svc_test_key'
-const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: SK } as unknown as CloudflareBindings
+const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: SK, BETTER_AUTH_SECRET: 'test-secret', ADMIN_KEY: 'adm' } as unknown as CloudflareBindings
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
 const fetchW = (path: string, init: RequestInit = {}) => worker.fetch(new Request(`http://localhost${path}`, init), env, ctx)
 const owner = (path: string, body?: unknown) =>
   fetchW(path, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${SK}`, 'x-paycall-as': 'owner:own_1', 'content-type': 'application/json' }, body: body && JSON.stringify(body) })
 
 let seq = 0
+let last: Response
 let channelId = ''
 async function pay() {
   seq++
@@ -36,9 +37,9 @@ async function pay() {
     { channelId, payer: pubkey, payTo: 'sel_1', cumulativeAmount: String(seq * PRICE), currency: 'USD', seq, expiry: (Date.now() / 1000 + 60) | 0 },
     keys.privateKey,
   )
-  const res = await fetchW('/p/ep_1/x', { headers: { 'PAYMENT-SIGNATURE': btoa(JSON.stringify({ x402Version: 2, accepted, payload })) } })
-  if (res.status !== 200) seq-- // failed voucher not consumed
-  return res.status === 200 ? 'ok' : JSON.parse(atob(res.headers.get('payment-required')!)).error
+  last = await fetchW('/p/ep_1/x', { headers: { 'PAYMENT-SIGNATURE': btoa(JSON.stringify({ x402Version: 2, accepted, payload })) } })
+  if (last.status !== 200) seq-- // failed voucher not consumed
+  return last.status === 200 ? 'ok' : JSON.parse(atob(last.headers.get('payment-required')!)).error
 }
 const setAgent = (v: Partial<typeof agents.$inferInsert>) => db.update(agents).set(v).where(eq(agents.pubkey, pubkey))
 
@@ -86,4 +87,27 @@ test('catalog: public search', async () => {
   expect(await (await fetchW('/catalog?q=weatherco')).json()).toHaveLength(1)
   expect(await (await fetchW('/catalog?q=flights')).json()).toHaveLength(0)
   expect(await (await fetchW('/catalog?q=%25')).json()).toHaveLength(0) // % escaped
+})
+
+test('upstream auth: sealed, never returned, injected over caller header; admin verified badge', async () => {
+  const seller = (method: string, path: string, body?: unknown) =>
+    fetchW(path, { method, headers: { authorization: `Bearer ${SK}`, 'x-paycall-as': 'seller:sel_1', 'content-type': 'application/json' }, body: body && JSON.stringify(body) })
+  expect((await seller('PATCH', '/endpoints/ep_1', { upstreamAuth: 'x-api-key: bad\r\nevil: 1' })).status).toBe(400)
+  const ep = (await (await seller('PATCH', '/endpoints/ep_1', { upstreamAuth: 'x-api-key: sk_live_123' })).json()) as Record<string, unknown>
+  expect(ep.hasAuth).toBe(true)
+  expect('upstreamAuth' in ep).toBe(false)
+  const [row] = await db.select().from(endpoints).where(eq(endpoints.id, 'ep_1'))
+  expect(row!.upstreamAuth).not.toContain('sk_live_123') // sealed at rest
+  const listed = JSON.stringify(await (await seller('GET', '/endpoints')).json())
+  expect(listed).not.toContain(row!.upstreamAuth!)
+
+  expect(await pay()).toBe('ok')
+  expect(((await last.json()) as { key: string }).key).toBe('sk_live_123')
+  expect(((await (await seller('PATCH', '/endpoints/ep_1', { upstreamAuth: null })).json()) as { hasAuth: boolean }).hasAuth).toBe(false)
+
+  const adm = (b: unknown, k = 'adm') => fetchW('/admin/endpoints/ep_1/verified', { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json' }, body: JSON.stringify(b) })
+  expect((await adm({ verified: true }, 'nope')).status).toBe(401)
+  expect((await adm({ verified: true })).status).toBe(200)
+  const [l] = (await (await fetchW('/catalog')).json()) as { verified: boolean }[]
+  expect(l!.verified).toBe(true)
 })

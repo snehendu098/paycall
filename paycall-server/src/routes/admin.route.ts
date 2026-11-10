@@ -7,3 +7,4 @@ import type { AppEnv } from '../types'
 export const adminRoute = new Hono<AppEnv>()
   .use(bearerAuth<AppEnv>({ verifyToken: (t, c) => !!c.env.ADMIN_KEY && timingSafeEqual(t, c.env.ADMIN_KEY) }))
   .post('/settle-now', ...admin.settleNow)
+  .post('/endpoints/:id/verified', ...admin.verify)

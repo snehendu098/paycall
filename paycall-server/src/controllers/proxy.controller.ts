@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import { eq } from 'drizzle-orm'
 import { endpoints } from '../db/schema'
 import { factory } from '../lib/factory'
+import { unseal } from '../lib/seal'
 import { checkPayment, NETWORK, PaymentBody, SCHEME, settlePayment } from '../payments'
 import { reloadAfterSettle } from '../topups'
 import type { AppEnv } from '../types'
@@ -57,6 +58,11 @@ export const forward = factory.createHandlers(async (c) => {
 
   const headers = new Headers()
   c.req.raw.headers.forEach((v, k) => DROP_REQ.test(k) || headers.set(k, v))
+  if (ep.upstreamAuth) {
+    const h = await unseal(c.env.BETTER_AUTH_SECRET, ep.upstreamAuth)
+    const i = h.indexOf(':')
+    headers.set(h.slice(0, i), h.slice(i + 1).trim()) // seller key wins over caller's
+  }
   const rest = url.pathname.slice(url.pathname.indexOf(id) + id.length)
   const method = c.req.method
   let res: Response

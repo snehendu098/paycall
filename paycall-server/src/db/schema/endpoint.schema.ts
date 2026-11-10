@@ -1,4 +1,4 @@
-import { pgTable, text } from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text } from 'drizzle-orm/pg-core'
 import { randomId } from '../../lib/util'
 import { createdAt, micros } from './common.schema'
 import { sellers } from './seller.schema'
@@ -11,5 +11,7 @@ export const endpoints = pgTable('endpoints', {
   price: micros().notNull(),
   description: text().notNull().default(''),
   category: text().notNull().default(''),
+  upstreamAuth: text(), // sealed "Header: value" proxy adds upstream; write-only
+  verified: boolean().notNull().default(false), // admin-set
   createdAt: createdAt(),
 })

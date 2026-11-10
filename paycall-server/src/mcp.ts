@@ -61,7 +61,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
   s.registerTool(
     'search_paid_apis',
     {
-      description: 'Search the PayCall catalog of paid APIs (name, description, price per call, URL). Call the returned URL with paid_fetch.',
+      description: 'Search the PayCall catalog of paid APIs (name, description, price per call, URL). Prefer ✓ verified listings (reviewed by PayCall). Call the returned URL with paid_fetch.',
       inputSchema: z.object({ query: z.string().max(100).optional().describe('keywords, e.g. "weather" or "flights"; empty = newest') }),
     },
     async ({ query }) => {
@@ -69,7 +69,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
       try {
         const rows = await searchCatalog(db, origin, query)
         if (!rows.length) return text(`no paid APIs match "${query ?? ''}"`)
-        return text(rows.map((r) => `${r.name} (${r.seller}) ${usd(r.price)}/call${r.category ? ` [${r.category}]` : ''}\n  ${r.url}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
+        return text(rows.map((r) => `${r.verified ? '✓ verified · ' : ''}${r.name} (${r.seller}) ${usd(r.price)}/call${r.category ? ` [${r.category}]` : ''}\n  ${r.url}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
       } finally {
         await close()
       }
