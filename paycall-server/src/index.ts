@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { authorize } from './controllers/oauth.controller'
+import { dashboard } from './dashboard'
 import { connect } from './db'
 import { mcpHandler } from './mcp'
 import { settleAll } from './payouts'
@@ -60,6 +61,8 @@ const app = new Hono<AppEnv>()
     console.error(err)
     return c.json({ error: 'internal_error' }, 500)
   })
+
+app.route('/api', dashboard(app)) // dashboard: better auth + session-backed api
 
 const mcp = mcpHandler(app)
 // resource = request origin → same code on wrangler dev + prod

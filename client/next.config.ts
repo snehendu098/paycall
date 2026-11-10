@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // auth + api run on paycall-server; proxied → cookies first-party here
+  rewrites: async () => [{ source: "/api/:path*", destination: `${process.env.PAYCALL_API_URL!.replace(/\/$/, "")}/api/:path*` }],
   // old dashboard urls
   redirects: async () => [
     { source: "/buyer", destination: "/app/spend", permanent: true },

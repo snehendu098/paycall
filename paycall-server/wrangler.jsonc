@@ -23,6 +23,7 @@
   "vars": {
     "PAYPAL_API": "https://api-m.sandbox.paypal.com",
     "DASHBOARD_ORIGIN": "http://localhost:3000",
+    "RESEND_FROM": "PayCall <onboarding@resend.dev>",
     "FEE_BPS": 200,
     "PAYOUT_MIN_MICROS": 500000
   }
