@@ -32,8 +32,23 @@ const Meta = z.object({
   category: z.string().max(32).optional(),
 })
 
+// price means: per call | per token | per char | per pass. sent as a unit (absent = keep); unused fields nulled
+const NoPricing = z
+  .object({
+    pricing: z.enum(['call', 'token', 'char', 'pass']).optional(),
+    maxAmount: zMicros.positive().optional(), // metered: cap per call the agent signs
+    passSeconds: z.number().int().min(60).max(30 * 86_400).optional(),
+  })
+  .refine((p) => (p.pricing === 'token' || p.pricing === 'char' ? p.maxAmount : true), { message: 'metered pricing needs maxAmount', path: ['maxAmount'] })
+  .refine((p) => (p.pricing === 'pass' ? p.passSeconds : true), { message: 'pass pricing needs passSeconds', path: ['passSeconds'] })
+  .transform((p) =>
+    p.pricing
+      ? { pricing: p.pricing, maxAmount: p.pricing === 'token' || p.pricing === 'char' ? p.maxAmount! : null, passSeconds: p.pricing === 'pass' ? p.passSeconds! : null }
+      : {},
+  )
+
 export const create = factory.createHandlers(
-  zValidator('json', Meta.extend({ upstreamUrl, price: zMicros.positive(), upstreamHeaders: upstreamHeaders.optional() })),
+  zValidator('json', z.intersection(Meta.extend({ upstreamUrl, price: zMicros.positive(), upstreamHeaders: upstreamHeaders.optional() }), NoPricing)),
   async (c) => {
     const { upstreamHeaders: h, ...v } = c.req.valid('json')
     const [ep] = await c.var.db
@@ -58,7 +73,7 @@ export const remove = factory.createHandlers(async (c) => {
 })
 
 // upstreamHeaders: object = replace all, null/{} = clear, absent = keep
-export const update = factory.createHandlers(zValidator('json', Meta.extend({ price: zMicros.positive(), upstreamHeaders: upstreamHeaders.nullable() }).partial()), async (c) => {
+export const update = factory.createHandlers(zValidator('json', z.intersection(Meta.extend({ price: zMicros.positive(), upstreamHeaders: upstreamHeaders.nullable() }).partial(), NoPricing)), async (c) => {
   const { upstreamHeaders: h, ...v } = c.req.valid('json')
   const [ep] = await c.var.db
     .update(endpoints)

@@ -8,7 +8,6 @@ import { connect } from './db'
 import { agents, entries, owners } from './db/schema'
 import { spentToday } from './ledger'
 import { searchCatalog } from './controllers/catalog.controller'
-import { toDollars } from './lib/util'
 
 type App = { fetch: (req: Request, env: CloudflareBindings, ctx: ExecutionContext) => Response | Promise<Response> }
 
@@ -26,7 +25,15 @@ const REASONS: Record<string, string> = {
   approval_required: 'price is above the approval threshold: the user must approve it in the PayCall dashboard (Spend → Approvals), then retry the same call',
 }
 const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], isError })
-const usd = (m: number) => `$${toDollars(m)}`
+// sub-cent prices are normal: up to 6 decimals, at least 2
+const usd = (m: number) => `$${(m / 1e6).toFixed(6).replace(/(\.\d\d\d*?)0+$/, '$1')}`
+// "$0.01/call" | "$0.00001/token, max $0.05/call" | "$0.10 for 1h pass"
+const priceText = (r: { price: number; pricing: string; maxAmount: number | null; passSeconds: number | null }) =>
+  r.pricing === 'pass'
+    ? `${usd(r.price)} for ${r.passSeconds! >= 3600 ? `${r.passSeconds! / 3600}h` : `${r.passSeconds! / 60}min`} pass`
+    : r.pricing === 'call'
+      ? `${usd(r.price)}/call`
+      : `${usd(r.price)}/${r.pricing}, max ${usd(r.maxAmount!)}/call`
 
 function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>, env: CloudflareBindings, origin: string) {
   const s = new McpServer({ name: 'paycall', version: '0.3.0' })
@@ -51,9 +58,18 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
         return text(`HTTP 402: ${!offered ? 'payment required, but the server does not accept PayCall' : (REASONS[pr.error] ?? `payment failed: ${pr.error}`)}`, true)
       }
       const lines = [`HTTP ${res.status}`]
-      const receipt = decodePaymentHeader(res.headers.get('payment-response'))
-      if (receipt?.success) lines.push(`paid ${usd(agent.spent)} from PayCall balance (tx ${receipt.transaction})`) // fresh agent per request → spent = this call
       const b = await res.text()
+      // metered sse: final charge arrives as a trailing event, header only has the cap
+      const trailer = b.match(/event: paycall-receipt\ndata: (.+)/)?.[1]
+      const paid = (trailer && JSON.parse(trailer)) || decodePaymentHeader(res.headers.get('payment-response'))
+      if (paid?.pass && !paid.transaction) lines.push(`free: time pass active until ${paid.pass.expiresAt}`)
+      else if (paid?.success)
+        lines.push(
+          `paid ${usd(Number(paid.amount ?? agent.spent))} from PayCall balance (tx ${paid.transaction})` +
+            (paid.units !== undefined ? `, metered ${paid.units} units, ${usd(Number(paid.refunded))} of the cap refunded` : '') +
+            (paid.pass ? `, pass valid until ${paid.pass.expiresAt}` : '') +
+            (paid.receipt ? '\nsigned receipt (verify at /.well-known/jwks.json): ' + paid.receipt : ''),
+        )
       lines.push('', b.length > MAX_BODY ? `${b.slice(0, MAX_BODY)}\n…[truncated, ${b.length} chars total]` : b)
       return text(lines.join('\n'), !res.ok)
     },
@@ -70,7 +86,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
       try {
         const rows = await searchCatalog(db, origin, query)
         if (!rows.length) return text(`no paid APIs match "${query ?? ''}"`)
-        return text(rows.map((r) => `${r.verified ? '✓ verified · ' : ''}${r.name} (${r.seller}) ${usd(r.price)}/call${r.category ? ` [${r.category}]` : ''}\n  ${r.url}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
+        return text(rows.map((r) => `${r.verified ? '✓ verified · ' : ''}${r.name} (${r.seller}) ${priceText(r)}${r.category ? ` [${r.category}]` : ''}\n  ${r.url}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
       } finally {
         await close()
       }

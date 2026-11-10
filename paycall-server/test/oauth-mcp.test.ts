@@ -113,7 +113,7 @@ test('oauth → consent → token → paid_fetch pays proxy via voucher; wallet_
   expect(sr.content[0].text).toContain('$0.01/call')
 
   const w = await tool(at, 'wallet_info')
-  expect(w.content[0].text).toContain('balance: $0.01')
+  expect(w.content[0].text).toContain('balance: $0.005')
   expect(w.content[0].text).toContain('spent today: $0.02')
 })
 
