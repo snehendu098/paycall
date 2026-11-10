@@ -1,3 +1,4 @@
+import { z } from 'zod'
 export const b64url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
@@ -14,3 +15,5 @@ export const sha256 = async (s: string) =>
 export const toDollars = (micros: number) => (micros / 1e6).toFixed(2)
 export const toMicros = (dollars: string) => Math.round(Number(dollars) * 1e6)
 export const floorCents = (micros: number) => Math.floor(micros / 10_000) * 10_000
+
+export const zMicros = z.number().int().nonnegative().max(1e12)

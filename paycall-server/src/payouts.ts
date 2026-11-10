@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
-import type { DB } from './db'
+import { withDb, type DB } from './db'
 import { channels, entries, payoutBatches, payoutItems, sellers } from './db/schema'
 import { paypal, PayPalError } from './lib/paypal'
 import { floorCents, randomId, toDollars } from './lib/util'
@@ -117,3 +117,10 @@ export async function pollPayouts(env: Env, db: DB) {
     await db.update(payoutBatches).set({ status: res.batch_header.batch_status }).where(eq(payoutBatches.id, b.id))
   }
 }
+
+// cron + /admin/settle-now: own conn, refresh statuses then pay
+export const settleAll = (env: CloudflareBindings) =>
+  withDb(env.HYPERDRIVE.connectionString, async (db) => {
+    await pollPayouts(env, db)
+    return runSettlement(env, db)
+  })

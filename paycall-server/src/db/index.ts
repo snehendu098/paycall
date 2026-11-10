@@ -1,3 +1,4 @@
+import { sql, type AnyColumn } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Client } from 'pg'
 import * as schema from './schema'
@@ -19,3 +20,5 @@ export async function withDb<T>(connectionString: string, fn: (db: DB) => Promis
     await close()
   }
 }
+
+export const sumMicros = (col: AnyColumn) => sql<number>`coalesce(sum(${col}), 0)`.mapWith(Number)
