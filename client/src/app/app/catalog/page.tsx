@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { $, API } from '@/lib/api'
-import { Badge } from '@/components/ds'
 import { errMsg, Nothing, Page, Skel } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
@@ -20,9 +19,9 @@ const SearchIcon = ({ className }: { className?: string }) => (
 )
 // reviewed by PayCall
 const Verified = () => (
-  <span title="Verified by PayCall" className="inline-flex shrink-0 items-center gap-1 text-[11px] text-live">
+  <span title="Verified by PayCall" className="inline-flex shrink-0 text-live">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="size-3.5"><path d="m12 1.5 2.6 2 3.3-.2.9 3.2 2.7 1.9-1.2 3.1 1.2 3.1-2.7 1.9-.9 3.2-3.3-.2-2.6 2-2.6-2-3.3.2-.9-3.2-2.7-1.9 1.2-3.1L2.5 8.4l2.7-1.9.9-3.2 3.3.2z" /><path d="m8.5 12.2 2.4 2.4 4.6-4.8" fill="none" stroke="var(--background)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
-    Verified
+    <span className="sr-only">Verified</span>
   </span>
 )
 const Kbd = ({ children }: { children: string }) => <kbd className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{children}</kbd>
@@ -193,17 +192,19 @@ export default function CatalogPage() {
         {!shown ? <Skel className="h-48" /> : shown.length === 0 ? <Nothing>{q || max < Infinity || cat ? 'No matches.' : 'Nothing listed yet.'}</Nothing> : (
           <ul className="divide-y divide-border border border-border bg-card">
             {shown.map((l) => (
-              <li key={l.id} data-testid="listing" className="flex items-center gap-4 px-5 py-4">
+              <li key={l.id} data-testid="listing" className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <span className="truncate text-sm">{l.name}</span>
                     {l.verified && <Verified />}
-                    {l.category && <Badge tone="muted">{l.category}</Badge>}
+                    <span className="shrink-0 text-xs text-muted-foreground/70 max-sm:hidden">by {l.seller}</span>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{l.seller}{l.description && <> · {l.description}</>}</p>
+                    {l.description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:truncate" title={l.description}>{l.description}</p>}
                 </div>
-                <span className="shrink-0 font-mono text-sm">{$(l.price)}<span className="text-muted-foreground">/call</span></span>
-                <CopyUrl url={l.url} />
+                <div className="flex shrink-0 items-center justify-between gap-4">
+                  <span className="font-mono text-sm">{$(l.price)}<span className="text-muted-foreground">/call</span></span>
+                  <CopyUrl url={l.url} />
+                </div>
               </li>
             ))}
           </ul>
