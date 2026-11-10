@@ -1,0 +1,27 @@
+{
+  "name": "paycall-middleware",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/express": "^5.0.6",
+    "express": "^5.3.0",
+    "hono": "^4.13.17",
+    "paycall-sdk": "file:../paycall-sdk"
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "hono": "^4",
+    "express": "^4 || ^5"
+  },
+  "exports": "./src/index.ts",
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    }
+  }
+}
