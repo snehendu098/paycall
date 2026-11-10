@@ -11,12 +11,20 @@ const upstreamUrl = z
   .url({ protocol: /^https$/ })
   .transform((u) => u.replace(/\/+$/, ''))
 
-// one header, e.g. "x-api-key: sk_..."; no CR/LF (header injection)
-const upstreamAuth = z.string().max(2000).regex(/^[A-Za-z0-9-]+:[^\r\n]+$/, 'expected "Header-Name: value"')
+// seller's upstream keys, e.g. {"x-api-key": "sk_..."}; token names, no CR/LF (header injection)
+const RESERVED = /^(host|connection|content-length|transfer-encoding|cookie|payment-.*|cf-.*|x-forwarded-.*)$/i
+const upstreamHeaders = z
+  .record(
+    z.string().regex(/^[A-Za-z0-9-]{1,64}$/, 'header name: letters, digits, -').refine((k) => !RESERVED.test(k), 'reserved header'),
+    z.string().min(1).max(2000).regex(/^[^\r\n]*$/, 'no line breaks'),
+  )
+  .refine((o) => Object.keys(o).length <= 10, 'max 10 headers')
+const sealHeaders = async (secret: string, h: Record<string, string> | null | undefined) =>
+  h && Object.keys(h).length ? seal(secret, JSON.stringify(h)) : null
 
 // never return the sealed secret, only whether one is set
-const { upstreamAuth: _sealed, ...pub } = getTableColumns(endpoints)
-const cols = { ...pub, hasAuth: sql<boolean>`${endpoints.upstreamAuth} is not null` }
+const { upstreamHeaders: _sealed, ...pub } = getTableColumns(endpoints)
+const cols = { ...pub, hasAuth: sql<boolean>`${endpoints.upstreamHeaders} is not null` }
 
 const Meta = z.object({
   name: z.string().min(1).max(64),
@@ -25,12 +33,12 @@ const Meta = z.object({
 })
 
 export const create = factory.createHandlers(
-  zValidator('json', Meta.extend({ upstreamUrl, price: zMicros.positive(), upstreamAuth: upstreamAuth.optional() })),
+  zValidator('json', Meta.extend({ upstreamUrl, price: zMicros.positive(), upstreamHeaders: upstreamHeaders.optional() })),
   async (c) => {
-    const { upstreamAuth: a, ...v } = c.req.valid('json')
+    const { upstreamHeaders: h, ...v } = c.req.valid('json')
     const [ep] = await c.var.db
       .insert(endpoints)
-      .values({ ...v, sellerId: c.var.principal.id, upstreamAuth: a && (await seal(c.env.BETTER_AUTH_SECRET, a)) })
+      .values({ ...v, sellerId: c.var.principal.id, upstreamHeaders: await sealHeaders(c.env.BETTER_AUTH_SECRET, h) })
       .returning(cols)
     return c.json(ep, 201)
   },
@@ -49,12 +57,12 @@ export const remove = factory.createHandlers(async (c) => {
   return c.json(ep)
 })
 
-// upstreamAuth: string = replace, null = clear, absent = keep
-export const update = factory.createHandlers(zValidator('json', Meta.extend({ price: zMicros.positive(), upstreamAuth: upstreamAuth.nullable() }).partial()), async (c) => {
-  const { upstreamAuth: a, ...v } = c.req.valid('json')
+// upstreamHeaders: object = replace all, null/{} = clear, absent = keep
+export const update = factory.createHandlers(zValidator('json', Meta.extend({ price: zMicros.positive(), upstreamHeaders: upstreamHeaders.nullable() }).partial()), async (c) => {
+  const { upstreamHeaders: h, ...v } = c.req.valid('json')
   const [ep] = await c.var.db
     .update(endpoints)
-    .set({ ...v, ...(a !== undefined && { upstreamAuth: a && (await seal(c.env.BETTER_AUTH_SECRET, a)) }) })
+    .set({ ...v, ...(h !== undefined && { upstreamHeaders: await sealHeaders(c.env.BETTER_AUTH_SECRET, h) }) })
     .where(and(eq(endpoints.id, c.req.param('id')!), eq(endpoints.sellerId, c.var.principal.id)))
     .returning(cols)
   if (!ep) throw new HTTPException(404, { message: 'unknown endpoint' })

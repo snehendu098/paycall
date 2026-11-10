@@ -11,7 +11,7 @@ export const endpoints = pgTable('endpoints', {
   price: micros().notNull(),
   description: text().notNull().default(''),
   category: text().notNull().default(''),
-  upstreamAuth: text(), // sealed "Header: value" proxy adds upstream; write-only
+  upstreamHeaders: text('upstream_auth'), // sealed json {header: value} proxy adds upstream; write-only
   verified: boolean().notNull().default(false), // admin-set
   createdAt: createdAt(),
 })

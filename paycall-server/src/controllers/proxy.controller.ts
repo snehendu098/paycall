@@ -58,11 +58,8 @@ export const forward = factory.createHandlers(async (c) => {
 
   const headers = new Headers()
   c.req.raw.headers.forEach((v, k) => DROP_REQ.test(k) || headers.set(k, v))
-  if (ep.upstreamAuth) {
-    const h = await unseal(c.env.BETTER_AUTH_SECRET, ep.upstreamAuth)
-    const i = h.indexOf(':')
-    headers.set(h.slice(0, i), h.slice(i + 1).trim()) // seller key wins over caller's
-  }
+  // seller keys win over caller's
+  if (ep.upstreamHeaders) for (const [k, v] of Object.entries(JSON.parse(await unseal(c.env.BETTER_AUTH_SECRET, ep.upstreamHeaders)) as Record<string, string>)) headers.set(k, v)
   const rest = url.pathname.slice(url.pathname.indexOf(id) + id.length)
   const method = c.req.method
   let res: Response
