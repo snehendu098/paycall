@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "paycall-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["*/10 * * * *"] },
+  "kv_namespaces": [
+    // bunx wrangler kv namespace create KV
+    { "binding": "KV", "id": "e2348a5cc64742db8aab7cc0c2e5d07a" }
+  ],
+  "hyperdrive": [
+    {
+      // bunx wrangler hyperdrive create paycall --connection-string="<neon url>" --caching-disabled
+      "binding": "HYPERDRIVE",
+      "id": "c80f0fa348dc4dccbb5622f2dc725c4e",
+      "localConnectionString": "postgres://paycall:paycall@localhost:5433/paycall"
+    }
+  ],
+  "vars": {
+    "PAYPAL_API": "https://api-m.sandbox.paypal.com",
+    "DASHBOARD_ORIGIN": "http://localhost:3000",
+    "FEE_BPS": 200,
+    "PAYOUT_MIN_MICROS": 500000
+  }
+}
