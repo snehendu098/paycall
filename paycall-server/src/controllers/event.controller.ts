@@ -18,7 +18,9 @@ export const stream = factory.createHandlers((c) => {
         last = r?.top ?? 0
       }
 
-      while (!s.aborted) {
+      await s.write(': ok\n\n') // flush headers now
+      for (let tick = 1; !s.aborted; tick++) {
+        if (tick % 15 === 0) await s.write(': ping\n\n') // keepalive → proxies don't drop idle stream
         const rows = await db.select().from(entries).where(and(eq(col, id), gt(entries.id, last))).orderBy(entries.id).limit(100)
         for (const row of rows) {
           last = row.id
