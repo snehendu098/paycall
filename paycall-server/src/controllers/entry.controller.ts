@@ -14,6 +14,9 @@ export const list = factory.createHandlers(
         ...getTableColumns(entries),
         refunded: sql<number>`(select coalesce(sum(r.amount), 0) from entries r where r.parent_id = ${entries.id} and r.type = 'refund')`.mapWith(Number),
         dispute: sql<string | null>`(select status from disputes d where d.entry_id = ${entries.id})`,
+        // display names: endpoint from the paid url (/p/<id>/…), seller for buyer view
+        endpoint: sql<string | null>`(select name from endpoints ep where ep.id = substring(${entries.resource} from '/p/([^/?#]+)'))`,
+        seller: sql<string | null>`(select name from sellers s where s.id = ${entries.sellerId})`,
       })
       .from(entries)
       .where(and(eq(role === 'owner' ? entries.ownerId : entries.sellerId, id), before ? lt(entries.id, before) : undefined))

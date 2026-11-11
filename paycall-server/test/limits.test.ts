@@ -138,3 +138,9 @@ test('agent rename + delete: hidden from list, key can no longer pay, other owne
   expect(await pay()).toBe('unknown_payer')
   expect((await as('owner:own_1', 'PATCH', `/agents/${pubkey}`, { paused: false })).status).toBe(404) // can't revive
 })
+
+test('entries carry endpoint + seller names for display', async () => {
+  expect(await pay()).toBe('ok')
+  const [e] = (await (await owner('/entries')).json()) as { type: string; endpoint: string; seller: string }[]
+  expect(e).toMatchObject({ type: 'charge', endpoint: 'forecast', seller: 'WeatherCo' })
+})
