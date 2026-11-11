@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { withDb, type DB } from './db'
-import { channels, entries, payoutBatches, payoutItems, sellers } from './db/schema'
+import { agentNonces, channels, entries, payoutBatches, payoutItems, sellers } from './db/schema'
 import { paypal, PayPalError } from './lib/paypal'
 import { heldOf, refundedOf } from './ledger'
 import { floorCents, randomId, toDollars } from './lib/util'
@@ -123,6 +123,7 @@ export async function pollPayouts(env: Env, db: DB) {
 // cron + /admin/settle-now: own conn, refresh statuses then pay
 export const settleAll = (env: CloudflareBindings) =>
   withDb(env.HYPERDRIVE.connectionString, async (db) => {
+    await db.delete(agentNonces).where(sql`${agentNonces.createdAt} < now() - interval '10 minutes'`) // past AGENT_WINDOW, can't verify anyway
     await pollPayouts(env, db)
     return runSettlement(env, db)
   })

@@ -17,7 +17,8 @@ export const entries = pgTable(
     ref: text().notNull().unique(), // idempotency: ch:<id>:<seq> | rf:<chargeId>:<tag> | cap:<id> | payout:<id> | fee:<id>
     parentId: bigint({ mode: 'number' }), // refund → its charge
     resource: text(), // charge: url paid for
-    units: integer(), // metered charge: tokens/chars counted
+    units: integer(), // metered charge: count of `unit`
+    unit: text().$type<'token' | 'char'>(),
     createdAt: createdAt(),
   },
   (t) => [index().on(t.ownerId, t.createdAt), index().on(t.sellerId, t.id), index().on(t.parentId)],

@@ -16,6 +16,11 @@ const upstream = Bun.serve({
     const u = new URL(req.url)
     if (u.pathname === '/boom') return new Response('nope', { status: 500 })
     if (u.pathname === '/llm') return Response.json({ text: 'hi', usage: { output_tokens: 300 } })
+    if (u.pathname === '/slow') {
+      // one event then hangs: only a client abort ends it
+      const body = new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ delta: { text: 'hello' } })}\n\n`)) })
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+    }
     if (u.pathname === '/sse') {
       const ev = (t: string) => `data: ${JSON.stringify({ delta: { text: t } })}\n\n`
       return new Response(ev('hello') + ev('world') + ev('again') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
@@ -65,8 +70,9 @@ const setEp = (v: Partial<typeof endpoints.$inferInsert>) => db.update(endpoints
 const agentHeader = async (url: string, k = keys) => {
   const ts = Math.floor(Date.now() / 1000)
   const pk = b64url(new Uint8Array((await crypto.subtle.exportKey('raw', k.publicKey)) as ArrayBuffer))
-  const sig = new Uint8Array(await crypto.subtle.sign('Ed25519', k.privateKey, new TextEncoder().encode(`paycall-agent:${ts}:GET:${url}`)))
-  return { 'paycall-agent': `${pk}.${ts}.${b64url(sig)}` }
+  const nonce = crypto.randomUUID()
+  const sig = new Uint8Array(await crypto.subtle.sign('Ed25519', k.privateKey, new TextEncoder().encode(`paycall-agent:${ts}:${nonce}:GET:${url}`)))
+  return { 'paycall-agent': `${pk}.${ts}.${nonce}.${b64url(sig)}` }
 }
 const refunds = async () => (await db.select().from(entries).where(eq(entries.type, 'refund'))).map((e) => e.amount)
 const balance = async () => (await db.select().from(owners).where(eq(owners.id, 'own_1')))[0].balance
@@ -122,6 +128,7 @@ test('metered per token: sign cap, charge reported usage, refund rest, signed re
   expect(pay).toMatchObject({ amount: '3000', units: 300, refunded: '7000' })
   expect(await balance()).toBe(22_000)
   expect(await refunds()).toEqual([7_000])
+  expect((await db.select().from(entries).where(eq(entries.type, 'charge')))[0]).toMatchObject({ units: 300, unit: 'token' })
 
   // receipt: EdDSA over header.payload, key from jwks
   const [h, p, s] = pay.receipt.split('.')
@@ -157,11 +164,24 @@ test('time pass: pay once, then signed identity rides free until expiry', async 
   expect(unb64((await call('/a', undefined, await agentHeader(url))).headers.get('payment-required')).accepts[0].extra.pass).toEqual({ seconds: 60 })
   const bought = await call('/a', await voucherHeader(1, PRICE))
   expect(unb64(bought.headers.get('payment-response')).pass.expiresAt).toBeTruthy()
-  const free = await call('/a', undefined, await agentHeader(url))
+  const h = await agentHeader(url)
+  const free = await call('/a', undefined, h)
   expect(free.status).toBe(200)
   expect(unb64(free.headers.get('payment-response')).pass).toBeTruthy()
+  expect((await call('/a', undefined, h)).status).toBe(402) // seen header replayed → nonce burnt
   const stranger = (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])) as CryptoKeyPair
   expect((await call('/a', undefined, await agentHeader(url, stranger))).status).toBe(402)
   expect((await call('/b', undefined, await agentHeader(url))).status).toBe(402) // sig bound to url
   expect(await balance()).toBe(15_000)
+})
+
+test('metered sse: client abort mid-stream still refunds unused cap', async () => {
+  await setEp({ pricing: 'char', price: 10, maxAmount: 10_000 })
+  const res = await call('/slow', await voucherHeader(1, 10_000))
+  const r = res.body!.getReader()
+  expect(new TextDecoder().decode((await r.read()).value)).toContain('hello')
+  await r.cancel() // client hangs up
+  await settled()
+  expect(await refunds()).toEqual([10_000 - 50]) // 5 chars × 10
+  expect((await db.select().from(entries).where(eq(entries.type, 'charge')))[0]).toMatchObject({ units: 5, unit: 'char' })
 })

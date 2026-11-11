@@ -1,5 +1,5 @@
 {
-  "id": "fe3567bf-71ba-4a11-9c42-ba011123af91",
+  "id": "e378e1b6-cbef-4f0d-8df6-6c81eb3aaf93",
   "prevId": "6b19619c-1bcd-4f4c-abab-8ac0b575845a",
   "version": "7",
   "dialect": "postgresql",
@@ -454,6 +454,12 @@
         "units": {
           "name": "units",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1121,6 +1127,32 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.agent_nonces": {
+      "name": "agent_nonces",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

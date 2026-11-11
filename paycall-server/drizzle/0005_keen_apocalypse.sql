@@ -1,3 +1,8 @@
+CREATE TABLE "agent_nonces" (
+	"id" text PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "passes" (
 	"agent_pubkey" text NOT NULL,
 	"endpoint_id" text NOT NULL,
@@ -24,6 +29,7 @@ ALTER TABLE "endpoints" ADD COLUMN "pass_seconds" integer;--> statement-breakpoi
 ALTER TABLE "entries" ADD COLUMN "parent_id" bigint;--> statement-breakpoint
 ALTER TABLE "entries" ADD COLUMN "resource" text;--> statement-breakpoint
 ALTER TABLE "entries" ADD COLUMN "units" integer;--> statement-breakpoint
+ALTER TABLE "entries" ADD COLUMN "unit" text;--> statement-breakpoint
 ALTER TABLE "passes" ADD CONSTRAINT "passes_agent_pubkey_agents_pubkey_fk" FOREIGN KEY ("agent_pubkey") REFERENCES "public"."agents"("pubkey") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "passes" ADD CONSTRAINT "passes_endpoint_id_endpoints_id_fk" FOREIGN KEY ("endpoint_id") REFERENCES "public"."endpoints"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "disputes" ADD CONSTRAINT "disputes_entry_id_entries_id_fk" FOREIGN KEY ("entry_id") REFERENCES "public"."entries"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

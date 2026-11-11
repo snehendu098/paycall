@@ -12,3 +12,9 @@ export const passes = pgTable(
   },
   (t) => [primaryKey({ columns: [t.agentPubkey, t.endpointId] })],
 )
+
+// single-use PAYCALL-AGENT nonces (x402 SIWX style): replay = pk conflict. cron drops rows past the 5 min window
+export const agentNonces = pgTable('agent_nonces', {
+  id: text().primaryKey(), // <pubkey>:<nonce>
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})

@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import { and, eq, gt, sql } from 'drizzle-orm'
-import { agents, endpoints, passes } from '../db/schema'
+import { agentNonces, agents, endpoints, entries, passes } from '../db/schema'
 import { demo } from '../demo'
 import { refund } from '../ledger'
 import { factory } from '../lib/factory'
@@ -77,7 +77,10 @@ export const forward = factory.createHandlers(async (c) => {
 
   // pass holder: signed identity, no payment
   if (ep.pricing === 'pass') {
-    const payer = await verifyAgentHeader(c.req.header('paycall-agent'), method, c.req.url)
+    const id = await verifyAgentHeader(c.req.header('paycall-agent'), method, c.req.url)
+    // burn nonce first: replayed header → conflict → falls through to 402
+    const fresh = id && (await db.insert(agentNonces).values({ id: `${id.payer}:${id.nonce}` }).onConflictDoNothing().returning()).length > 0
+    const payer = fresh ? id.payer : undefined
     if (payer) {
       const [p] = await db
         .select({ expiresAt: passes.expiresAt })
@@ -147,8 +150,12 @@ export const forward = factory.createHandlers(async (c) => {
     } satisfies Receipt)
   const paid = (amount: number, extra: object = {}) => ({ success: true, payer: r.payer, transaction: String(r.entryId), network: NETWORK, amount: String(amount), ...extra })
   // settle + refund are idempotent per voucher, so a duplicate settle must not refund twice
-  const refundUnused = (dbx: typeof db, charged: number) =>
-    signed > charged && !r.duplicate ? refund(dbx, r.entryId, ep.sellerId, signed - charged, 'unused') : undefined
+  // metered: record usage on the charge row, refund the unused cap
+  const settleUsage = async (dbx: typeof db, units: number, charged: number) => {
+    if (r.duplicate) return
+    await dbx.update(entries).set({ units, unit: ep.pricing as Unit }).where(eq(entries.id, r.entryId))
+    if (signed > charged) await refund(dbx, r.entryId, ep.sellerId, signed - charged, 'unused')
+  }
 
   const metered = ep.pricing === 'token' || ep.pricing === 'char'
   const stream = res.headers.get('content-type')?.startsWith('text/event-stream')
@@ -156,17 +163,21 @@ export const forward = factory.createHandlers(async (c) => {
   if (metered && stream) {
     // stream now, count as it flows; refund + receipt when it ends (own conn lifetime: index.ts skips close for sse)
     const rate = ep.price
-    const meter = meterStream(ep.pricing as Unit, rate, signed, async (units, cut) => {
-      const charged = cost(units, rate, signed)
-      try {
-        await refundUnused(db, charged)
-        const jws = await receipt(charged, units)
-        return `event: paycall-receipt\ndata: ${JSON.stringify(paid(charged, { units, cut, refunded: String(signed - charged), receipt: jws }))}\n\n`
-      } finally {
-        c.executionCtx.waitUntil(c.var.closeDb())
-      }
+    const meter = meterStream(res.body!, ep.pricing as Unit, rate, signed, (units, cut) => {
+      const done = (async () => {
+        const charged = cost(units, rate, signed)
+        try {
+          await settleUsage(db, units, charged)
+          const jws = await receipt(charged, units)
+          return `event: paycall-receipt\ndata: ${JSON.stringify(paid(charged, { units, unit: ep.pricing, cut, refunded: String(signed - charged), receipt: jws }))}\n\n`
+        } finally {
+          c.executionCtx.waitUntil(c.var.closeDb())
+        }
+      })()
+      c.executionCtx.waitUntil(done) // client abort: worker must outlive the response to refund
+      return done
     })
-    return relay(res, { 'PAYMENT-RESPONSE': b64json(paid(signed, { metered: true, max: String(signed) })) }, res.body!.pipeThrough(meter))
+    return relay(res, { 'PAYMENT-RESPONSE': b64json(paid(signed, { metered: true, max: String(signed) })) }, meter)
   }
 
   const passInfo = passUntil && { pass: { expiresAt: passUntil } }
@@ -181,9 +192,9 @@ export const forward = factory.createHandlers(async (c) => {
   if (metered) {
     units = countBody(new TextDecoder().decode(buf), ep.pricing as Unit)
     charged = cost(units, ep.price, signed)
-    await refundUnused(db, charged)
+    await settleUsage(db, units, charged)
   }
-  const header = b64json(paid(charged, { ...(metered && { units, refunded: String(signed - charged) }), ...passInfo, receipt: await receipt(charged, units) }))
+  const header = b64json(paid(charged, { ...(metered && { units, unit: ep.pricing, refunded: String(signed - charged) }), ...passInfo, receipt: await receipt(charged, units) }))
   const out = relay(res, { 'PAYMENT-RESPONSE': header }, buf)
   if (buf.byteLength <= IDEM_MAX) {
     let bin = ''

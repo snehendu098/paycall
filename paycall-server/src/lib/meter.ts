@@ -25,57 +25,65 @@ export function countBody(body: string, unit: Unit) {
 }
 
 // sse passthrough: counts text as it flows, stops forwarding once cost hits max.
-// onEnd(units) runs once, on upstream end, cut, or client abort; its return is appended as a final sse event
-export function meterStream(unit: Unit, rate: number, max: number, onEnd: (units: number, cut: boolean) => Promise<string | void>) {
+// onEnd(units) runs once, on upstream end, cut, or client abort; its return is appended as a final sse event.
+// pull-based source (not TransformStream): source cancel() reliably fires when the client disconnects, so the
+// unused cap still gets refunded (x402 upto: settle what was measured). caller keeps onEnd alive via waitUntil
+export function meterStream(body: ReadableStream<Uint8Array>, unit: Unit, rate: number, max: number, onEnd: (units: number, cut: boolean) => Promise<string | void>) {
+  const reader = body.getReader()
   const dec = new TextDecoder()
   const enc = new TextEncoder()
   let buf = ''
   let chars = 0
   let reported: number | undefined
   let cut = false
-  let done = false
+  let ended: Promise<string | void> | undefined
   const units = () => (unit === 'char' ? chars : (reported ?? estTokens(chars)))
-  const finish = async (ctl?: TransformStreamDefaultController<Uint8Array>) => {
-    if (done) return
-    done = true
-    const tail = await onEnd(units(), cut)
-    if (tail && ctl) ctl.enqueue(enc.encode(tail))
+  const finish = () => (ended ??= onEnd(units(), cut))
+  const close = async (ctl: ReadableStreamDefaultController<Uint8Array>) => {
+    const tail = await finish()
+    if (tail) ctl.enqueue(enc.encode(tail))
+    ctl.close()
   }
-  return new TransformStream<Uint8Array, Uint8Array>({
-    async transform(chunk, ctl) {
-      if (cut) return
-      buf += dec.decode(chunk, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop()!
-      let out = ''
-      for (const line of lines) {
-        out += line + '\n'
-        if (!line.startsWith('data:')) continue
-        const raw = line.slice(5).trim()
-        let o: unknown
-        try {
-          o = JSON.parse(raw)
-        } catch {}
-        if (raw !== '[DONE]') chars += chunkText(o, raw).length
-        reported = usageTokens(o) ?? reported
-        if (units() * rate >= max) {
-          cut = true
-          break
+  return new ReadableStream<Uint8Array>({
+    async pull(ctl) {
+      // loop until something is enqueued: a pull that enqueues nothing may not be called again
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) {
+          if (buf) ctl.enqueue(enc.encode(buf))
+          return close(ctl)
         }
-      }
-      ctl.enqueue(enc.encode(out))
-      if (cut) {
-        ctl.enqueue(enc.encode('\n'))
-        await finish(ctl)
-        ctl.terminate()
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()!
+        let out = ''
+        for (const line of lines) {
+          out += line + '\n'
+          if (!line.startsWith('data:')) continue
+          const raw = line.slice(5).trim()
+          let o: unknown
+          try {
+            o = JSON.parse(raw)
+          } catch {}
+          if (raw !== '[DONE]') chars += chunkText(o, raw).length
+          reported = usageTokens(o) ?? reported
+          if (units() * rate >= max) {
+            cut = true
+            break
+          }
+        }
+        if (out) ctl.enqueue(enc.encode(out))
+        if (cut) {
+          ctl.enqueue(enc.encode('\n'))
+          reader.cancel().catch(() => {})
+          return close(ctl)
+        }
+        if (out) return
       }
     },
-    async flush(ctl) {
-      if (buf && !cut) ctl.enqueue(enc.encode(buf))
-      await finish(ctl)
-    },
-    async cancel() {
-      await finish() // client went away: still settle what was streamed
+    async cancel(reason) {
+      reader.cancel(reason).catch(() => {})
+      await finish() // client went away: still charge only what was streamed
     },
   })
 }

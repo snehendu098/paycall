@@ -66,7 +66,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
       else if (paid?.success)
         lines.push(
           `paid ${usd(Number(paid.amount ?? agent.spent))} from PayCall balance (tx ${paid.transaction})` +
-            (paid.units !== undefined ? `, metered ${paid.units} units, ${usd(Number(paid.refunded))} of the cap refunded` : '') +
+            (paid.units !== undefined ? `, metered ${paid.units} ${paid.unit === 'char' ? 'chars' : 'tokens'}, ${usd(Number(paid.refunded))} of the cap refunded` : '') +
             (paid.pass ? `, pass valid until ${paid.pass.expiresAt}` : '') +
             (paid.receipt ? '\nsigned receipt (verify at /.well-known/jwks.json): ' + paid.receipt : ''),
         )
