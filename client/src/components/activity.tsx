@@ -123,7 +123,7 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
                 <span className="block truncate text-sm" title={e.resource ?? undefined}>{e.ref?.includes(':dispute:') ? 'Dispute refund' : label[role][e.type]}</span>
                 <span className="block truncate text-xs text-muted-foreground" suppressHydrationWarning>
                   {who && <span className="font-mono">{who} · </span>}
-                  {e.units != null && <>{e.units.toLocaleString()} units · </>}
+                  {e.units != null && <>{e.units.toLocaleString()} {e.unit === 'char' ? 'chars' : 'tokens'} · </>}
                   {ago(e.createdAt)}
                   {back > 0 && <> · <span className="font-mono">{$(back)}</span> refunded</>}
                   {e.dispute && <span className={e.dispute === 'open' ? 'text-live' : undefined}> · dispute {e.dispute}</span>}

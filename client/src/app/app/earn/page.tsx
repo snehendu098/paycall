@@ -80,9 +80,9 @@ function Earn() {
       <section>
         <div className="grid grid-cols-3 gap-4 sm:gap-10">
           {stats.map(([k, v]) => (
-            <div key={k} className="min-w-0">
+            <div key={k} className="@container min-w-0">
               <h2 className="text-sm text-muted-foreground">{k}</h2>
-              <div data-testid={`stat-${k.toLowerCase().replace(' ', '-')}`} className="mt-2 truncate text-[clamp(28px,6vw,56px)] font-light leading-none tracking-[-0.04em]">
+              <div data-testid={`stat-${k.toLowerCase().replace(' ', '-')}`} className="mt-2 truncate text-[clamp(16px,16cqw,56px)] font-light leading-none tracking-[-0.04em]">
                 {v === undefined ? <Skel className="h-[1em] w-[3ch]" /> : <Num value={v} />}
               </div>
             </div>

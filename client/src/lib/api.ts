@@ -30,6 +30,7 @@ export type Entry = {
   parentId?: number | null // refund → its charge
   resource?: string | null
   units?: number | null // metered charge
+  unit?: 'token' | 'char' | null
   refunded?: number // charge: refunded so far (absent on live sse rows)
   dispute?: 'open' | 'refunded' | 'rejected' | null
   createdAt: string
