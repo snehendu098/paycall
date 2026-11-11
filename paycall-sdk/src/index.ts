@@ -59,8 +59,9 @@ export async function createAgent(privateKey: string, opts: { fetch?: typeof fet
   // PAYCALL-AGENT: proves this agent holds a pass, no payment
   async function identity(method: string, url: string) {
     const ts = Math.floor(Date.now() / 1000)
-    const sig = await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(`paycall-agent:${ts}:${method.toUpperCase()}:${url}`))
-    return `${pubkey}.${ts}.${b64url(sig)}`
+    const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer) // single-use: server rejects a replayed header
+    const sig = await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(`paycall-agent:${ts}:${nonce}:${method.toUpperCase()}:${url}`))
+    return `${pubkey}.${ts}.${nonce}.${b64url(sig)}`
   }
 
   async function loadChannel(facilitator: string, payTo: string): Promise<Channel> {
