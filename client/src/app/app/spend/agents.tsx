@@ -15,6 +15,7 @@ type Patch = Partial<Pick<Agent, 'name' | 'paused' | 'maxPrice' | 'dailyCap' | '
 type Listing = { id: string; name: string; description: string | null; category: string | null; price: number; seller: string; sellerId?: string; url: string }
 
 const MCP_PATH = process.env.NEXT_PUBLIC_MCP_PATH ?? '/path/to/paycall-mcp/src/index.ts'
+const link = 'text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground'
 const PRICE = /^\d+(\.\d{1,6})?$/
 /** Agents list: name + key, inline max price, active switch. */
 export function AgentList({ agents, reload }: { agents?: Agent[]; reload: () => void }) {
@@ -94,9 +95,9 @@ function AgentRow({ a, reload }: { a: Agent; reload: () => void }) {
         <div className="truncate font-mono text-xs text-muted-foreground" title={a.pubkey}>{short(a.pubkey)}</div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {chips.map((c) => <span key={c} className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{c}</span>)}
-          <button type="button" onClick={() => setLimits(true)} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground">Limits</button>
-          <button type="button" onClick={() => setDialog('rename')} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground">Rename</button>
-          <button type="button" onClick={() => setDialog('remove')} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-destructive">Remove</button>
+          <button type="button" onClick={() => setLimits(true)} className={link}>Limits</button>
+          <button type="button" onClick={() => setDialog('rename')} className={link}>Rename</button>
+          <button type="button" onClick={() => setDialog('remove')} className={cn(link, 'hover:text-destructive')}>Remove</button>
         </div>
       </div>
       <PDialog open={limits} onOpenChange={setLimits} title={`${a.name} limits`} description="Leave blank for no limit.">

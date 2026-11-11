@@ -17,7 +17,6 @@ const SearchIcon = ({ className }: { className?: string }) => (
     <path d="m20 20-3.5-3.5" />
   </svg>
 )
-// reviewed by PayCall
 const Kbd = ({ children }: { children: string }) => <kbd className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{children}</kbd>
 
 const copy = (url: string) => navigator.clipboard.writeText(url)

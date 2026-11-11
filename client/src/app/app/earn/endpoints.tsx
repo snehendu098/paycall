@@ -89,7 +89,7 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
   }
 
   const code = '[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:py-2.5 [&_pre]:text-[12px]'
-  const host = (() => { try { return new URL(e.upstreamUrl).host } catch { return e.upstreamUrl } })()
+  const host = new URL(e.upstreamUrl).host // server validates https url
   const meta = [e.category && (e.category.length <= 3 ? e.category.toUpperCase() : e.category[0]!.toUpperCase() + e.category.slice(1)), `Forwards to ${host}`, e.hasAuth && 'API key added'].filter(Boolean) as string[]
   return (
     <div data-testid="endpoint" className="flex flex-col gap-2.5">

@@ -118,15 +118,16 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
           const back = (e.refunded ?? 0) - fold // refunded beyond the metered unused part
           const left = e.amount - (e.refunded ?? 0)
           const can = e.type === 'charge' && left > 0 && (role === 'seller' || (!e.dispute && now - +new Date(e.createdAt) < WINDOW))
+          const d = day(e.createdAt)
           const title = e.ref?.includes(':dispute:') ? 'Dispute refund' : e.type === 'charge' ? (e.endpoint ?? label[role].charge) : label[role][e.type]
           const sub = [
             e.type === 'refund' && e.endpoint,
             role === 'buyer' && e.type === 'charge' && e.seller,
             who,
             e.units != null && `${e.units.toLocaleString()} ${e.unit === 'char' ? 'chars' : 'tokens'}`,
-            day(e.createdAt) === 'Today' ? ago(e.createdAt) : new Date(e.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+            d === 'Today' ? ago(e.createdAt) : new Date(e.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
           ].filter(Boolean) as string[]
-          const head = i === 0 || day(shown[i - 1]!.createdAt) !== day(e.createdAt)
+          const head = i === 0 || day(shown[i - 1]!.createdAt) !== d
           return (
             <motion.li
               key={String(e.id)}
@@ -135,7 +136,7 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
               animate={{ opacity: 1, y: 0, backgroundColor: 'rgb(143 176 245 / 0)' }}
               transition={{ duration: 0.5, ease, backgroundColor: { duration: 2.4, ease: 'easeOut' } }}
             >
-              {head && <div className="pb-1 pt-5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/70 first:pt-4" suppressHydrationWarning>{day(e.createdAt)}</div>}
+              {head && <div className="pb-1 pt-5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/70 first:pt-4" suppressHydrationWarning>{d}</div>}
               <div className="group flex items-center justify-between gap-4 border-b border-border/60 py-3">
                 <span className="min-w-0">
                   <span className="block truncate text-sm" title={e.resource ?? undefined}>{title}</span>
