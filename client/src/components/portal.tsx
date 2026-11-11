@@ -306,3 +306,27 @@ export function MiniFlow() {
     </svg>
   )
 }
+
+/** PayCall verified seal. */
+export const Verified = () => (
+  <span title="Verified by PayCall" className="inline-flex shrink-0 text-live">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="size-3.5"><path d="m12 1.5 2.6 2 3.3-.2.9 3.2 2.7 1.9-1.2 3.1 1.2 3.1-2.7 1.9-.9 3.2-3.3-.2-2.6 2-2.6-2-3.3.2-.9-3.2-2.7-1.9 1.2-3.1L2.5 8.4l2.7-1.9.9-3.2 3.3.2z" /><path d="m8.5 12.2 2.4 2.4 4.6-4.8" fill="none" stroke="var(--background)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+    <span className="sr-only">Verified</span>
+  </span>
+)
+
+/** Inline mono value that copies on click (paid URLs, keys). */
+export function CopyChip({ text, label = text, className }: { text: string; label?: string; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      title="Copy"
+      onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })}
+      className={cn('inline-flex min-w-0 items-center gap-2 border border-border bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground', className)}
+    >
+      <span className="truncate">{label}</span>
+      <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground/70">{copied ? 'Copied' : 'Copy'}</span>
+    </button>
+  )
+}

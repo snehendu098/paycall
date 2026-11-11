@@ -63,6 +63,7 @@ const label: Record<Role, Record<Entry['type'], string>> = {
 }
 // metered calls settle the max then refund the rest (ref rf:<charge>:unused); fold those into the charge
 const isUnused = (e: Entry) => e.type === 'refund' && !!e.ref?.endsWith(':unused')
+const PAGE = 12
 const WINDOW = 7 * 86_400_000 // server DISPUTE_WINDOW_DAYS
 const WHY: Record<string, string> = {
   already_refunded: 'Already fully refunded',
@@ -80,6 +81,7 @@ const sign = (role: Role, t: Entry['type']) => (role === 'buyer' ? (t === 'charg
 /** Live ledger list. `names` maps agent pubkey → name. Seller can refund charges, buyer can dispute them. */
 export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; rows?: Entry[]; fresh: Set<string>; names?: Record<string, string>; onChanged?: () => void }) {
   const [act, setAct] = useState<Entry>()
+  const [limit, setLimit] = useState(PAGE)
   const [now, setNow] = useState(() => Date.now()) // 15s tick re-renders ago()
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 15_000)
@@ -98,11 +100,17 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
   if (list.length === 0)
     return <Nothing>{role === 'buyer' ? 'No activity yet. Top-ups and paid calls show up here live.' : 'No activity yet. Paid calls show up here the moment they settle.'}</Nothing>
 
+  const shown = list.slice(0, limit)
+  const day = (d: string) => {
+    const t = new Date(d), today = new Date(now)
+    const diff = Math.round((+new Date(today.toDateString()) - +new Date(t.toDateString())) / 86_400_000)
+    return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : t.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: t.getFullYear() === today.getFullYear() ? undefined : 'numeric' })
+  }
   return (
     <>
-    <ul className="max-h-[520px] overflow-y-auto border-t border-border" data-testid="activity">
+    <ul className="border-t border-border" data-testid="activity">
       <AnimatePresence initial={false}>
-        {list.map((e) => {
+        {shown.map((e, i) => {
           const s = sign(role, e.type)
           const isNew = fresh.has(String(e.id))
           const who = e.agentPubkey ? (names?.[e.agentPubkey] ?? short(e.agentPubkey)) : null
@@ -110,6 +118,15 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
           const back = (e.refunded ?? 0) - fold // refunded beyond the metered unused part
           const left = e.amount - (e.refunded ?? 0)
           const can = e.type === 'charge' && left > 0 && (role === 'seller' || (!e.dispute && now - +new Date(e.createdAt) < WINDOW))
+          const title = e.ref?.includes(':dispute:') ? 'Dispute refund' : e.type === 'charge' ? (e.endpoint ?? label[role].charge) : label[role][e.type]
+          const sub = [
+            e.type === 'refund' && e.endpoint,
+            role === 'buyer' && e.type === 'charge' && e.seller,
+            who,
+            e.units != null && `${e.units.toLocaleString()} ${e.unit === 'char' ? 'chars' : 'tokens'}`,
+            day(e.createdAt) === 'Today' ? ago(e.createdAt) : new Date(e.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+          ].filter(Boolean) as string[]
+          const head = i === 0 || day(shown[i - 1]!.createdAt) !== day(e.createdAt)
           return (
             <motion.li
               key={String(e.id)}
@@ -117,29 +134,34 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
               initial={isNew ? { opacity: 0, y: -8, backgroundColor: 'rgb(143 176 245 / 0.1)' } : false}
               animate={{ opacity: 1, y: 0, backgroundColor: 'rgb(143 176 245 / 0)' }}
               transition={{ duration: 0.5, ease, backgroundColor: { duration: 2.4, ease: 'easeOut' } }}
-              className="group flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
             >
-              <span className="min-w-0">
-                <span className="block truncate text-sm" title={e.resource ?? undefined}>{e.ref?.includes(':dispute:') ? 'Dispute refund' : label[role][e.type]}</span>
-                <span className="block truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                  {who && <span className="font-mono">{who} · </span>}
-                  {e.units != null && <>{e.units.toLocaleString()} {e.unit === 'char' ? 'chars' : 'tokens'} · </>}
-                  {ago(e.createdAt)}
-                  {back > 0 && <> · <span className="font-mono">{$(back)}</span> refunded</>}
-                  {e.dispute && <span className={e.dispute === 'open' ? 'text-live' : undefined}> · dispute {e.dispute}</span>}
+              {head && <div className="pb-1 pt-5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/70 first:pt-4" suppressHydrationWarning>{day(e.createdAt)}</div>}
+              <div className="group flex items-center justify-between gap-4 border-b border-border/60 py-3">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm" title={e.resource ?? undefined}>{title}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground" suppressHydrationWarning>
+                    {sub.join(' · ')}
+                    {back > 0 && <> · <span className="font-mono">{$(back)}</span> refunded</>}
+                    {e.dispute && <span className={e.dispute === 'open' ? 'text-live' : undefined}> · dispute {e.dispute}</span>}
+                  </span>
                 </span>
-              </span>
-              <span className="flex shrink-0 flex-col items-end gap-0.5">
-                <span className={cn('font-mono text-sm tabular-nums', s > 0 ? 'text-live' : 'text-foreground')}>
-                  {s > 0 ? '+' : '−'}{$(Math.abs(e.amount - fold))}
+                <span className="flex shrink-0 items-center gap-4">
+                  {can && <button type="button" onClick={() => setAct(e)} className={cn(quiet, 'focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100')}>{role === 'seller' ? 'Refund' : 'Dispute'}</button>}
+                  <span className={cn('min-w-[72px] text-right font-mono text-sm tabular-nums', s > 0 ? 'text-live' : 'text-foreground')}>
+                    {s > 0 ? '+' : '−'}{$(Math.abs(e.amount - fold))}
+                  </span>
                 </span>
-                {can && <button type="button" onClick={() => setAct(e)} className={cn(quiet, 'focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100')}>{role === 'seller' ? 'Refund' : 'Dispute'}</button>}
-              </span>
+              </div>
             </motion.li>
           )
         })}
       </AnimatePresence>
     </ul>
+    {list.length > limit && (
+      <button type="button" onClick={() => setLimit((n) => n + PAGE)} className="mt-4 self-start text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+        Show {Math.min(PAGE, list.length - limit)} more
+      </button>
+    )}
     <PDialog
       open={!!act}
       onOpenChange={(o) => !o && setAct(undefined)}

@@ -31,6 +31,8 @@ export type Entry = {
   resource?: string | null
   units?: number | null // metered charge
   unit?: 'token' | 'char' | null
+  endpoint?: string | null // listing name, from resource
+  seller?: string | null
   refunded?: number // charge: refunded so far (absent on live sse rows)
   dispute?: 'open' | 'refunded' | 'rejected' | null
   createdAt: string

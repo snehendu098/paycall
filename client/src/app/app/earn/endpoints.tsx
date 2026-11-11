@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { $, API, dur, per, toDollars, toMicros, type Pricing } from '@/lib/api'
 import { pc } from '@/lib/pc'
 import { XIcon } from '@phosphor-icons/react'
-import { Badge, Code, Input } from '@/components/ds'
-import { Act, ease, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
+import { Code, Input } from '@/components/ds'
+import { Act, CopyChip, ease, errMsg, Field, Nothing, PDialog, Skel, Verified } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
 export type Endpoint = Pricing & { id: string; name: string; upstreamUrl: string; description: string | null; category: string | null; hasAuth: boolean; verified: boolean; createdAt: string }
@@ -89,30 +89,26 @@ function EndpointRow({ e, reload }: { e: Endpoint; reload: () => void }) {
   }
 
   const code = '[&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_pre]:py-2.5 [&_pre]:text-[12px]'
+  const host = (() => { try { return new URL(e.upstreamUrl).host } catch { return e.upstreamUrl } })()
+  const meta = [e.category && (e.category.length <= 3 ? e.category.toUpperCase() : e.category[0]!.toUpperCase() + e.category.slice(1)), `Forwards to ${host}`, e.hasAuth && 'API key added'].filter(Boolean) as string[]
   return (
-    <div data-testid="endpoint" className="flex flex-col gap-3">
+    <div data-testid="endpoint" className="flex flex-col gap-2.5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm">{e.name}</span>
-            {e.verified && <Badge tone="live">Verified</Badge>}
-            {e.hasAuth && <Badge tone="muted">Key set</Badge>}
-          </div>
-          <div className="truncate font-mono text-xs text-muted-foreground" title={e.upstreamUrl}>{e.upstreamUrl}</div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[15px]">{e.name}</span>
+          {e.verified && <Verified />}
         </div>
-        <span className="shrink-0 font-mono text-sm">{$(e.price)}<span className="text-muted-foreground">{per(e)}</span></span>
+        <span className="shrink-0 font-mono text-sm tabular-nums">{$(e.price)}<span className="text-muted-foreground">{per(e)}</span></span>
       </div>
-      {(e.category || e.description) && (
-        <p className="text-[13px] text-muted-foreground">
-          {e.category && <Badge tone="muted" className="mr-2 align-middle">{e.category}</Badge>}
-          {e.description}
-        </p>
-      )}
-      <Code text={url} className={code} />
-      <div className="flex gap-5">
-        <button type="button" className={link} aria-expanded={tryIt} onClick={() => setTryIt(!tryIt)}>{tryIt ? 'Hide example' : 'Try it'}</button>
-        <button type="button" className={link} aria-expanded={edit} onClick={() => { setErr(''); setEdit(!edit) }}>{edit ? 'Cancel edit' : 'Edit'}</button>
-        <button type="button" className={`${link} hover:text-destructive`} onClick={() => setConfirm(true)}>Delete</button>
+      {e.description && <p className="line-clamp-2 max-w-[62ch] text-[13px] leading-relaxed text-muted-foreground">{e.description}</p>}
+      <div className="text-xs text-muted-foreground/80" title={e.upstreamUrl}>{meta.join(' · ')}</div>
+      <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <CopyChip text={url} label={url.replace(/^https?:\/\//, '')} className="self-start" />
+        <div className="flex gap-5">
+          <button type="button" className={link} aria-expanded={tryIt} onClick={() => setTryIt(!tryIt)}>{tryIt ? 'Hide example' : 'Try it'}</button>
+          <button type="button" className={link} aria-expanded={edit} onClick={() => { setErr(''); setEdit(!edit) }}>{edit ? 'Cancel' : 'Edit'}</button>
+          <button type="button" className={`${link} hover:text-destructive`} onClick={() => setConfirm(true)}>Delete</button>
+        </div>
       </div>
       {edit && (
         <form onSubmit={save} noValidate className="flex flex-col gap-4 border border-border p-4">

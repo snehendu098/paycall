@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { $, API, per, type Pricing } from '@/lib/api'
-import { errMsg, Nothing, Page, Skel } from '@/components/portal'
+import { errMsg, Nothing, Page, Skel, Verified } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
 type Listing = Pricing & { id: string; name: string; description: string | null; category: string | null; verified: boolean; seller: string; url: string }
@@ -18,12 +18,6 @@ const SearchIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 // reviewed by PayCall
-const Verified = () => (
-  <span title="Verified by PayCall" className="inline-flex shrink-0 text-live">
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="size-3.5"><path d="m12 1.5 2.6 2 3.3-.2.9 3.2 2.7 1.9-1.2 3.1 1.2 3.1-2.7 1.9-.9 3.2-3.3-.2-2.6 2-2.6-2-3.3.2-.9-3.2-2.7-1.9 1.2-3.1L2.5 8.4l2.7-1.9.9-3.2 3.3.2z" /><path d="m8.5 12.2 2.4 2.4 4.6-4.8" fill="none" stroke="var(--background)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
-    <span className="sr-only">Verified</span>
-  </span>
-)
 const Kbd = ({ children }: { children: string }) => <kbd className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{children}</kbd>
 
 const copy = (url: string) => navigator.clipboard.writeText(url)
