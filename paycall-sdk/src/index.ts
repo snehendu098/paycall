@@ -24,6 +24,47 @@ export function decodePaymentHeader<T = any>(h: string | null | undefined): T | 
   } catch {}
 }
 
+// sub-cent prices are normal: up to 6 decimals, at least 2
+export const usd = (m: number) => `$${(m / 1e6).toFixed(6).replace(/(\.\d\d\d*?)0+$/, '$1')}`
+const REASONS: Record<string, string> = {
+  insufficient_funds: 'insufficient balance: top up in the PayCall dashboard',
+  agent_paused: 'this agent is paused: unpause it in the PayCall dashboard',
+  daily_cap_exceeded: 'daily spending cap reached: raise it in the PayCall dashboard or wait until tomorrow',
+  price_above_agent_limit: "price is above this agent's max price per call: raise it in the PayCall dashboard",
+  unknown_payer: 'this agent key is not registered (or was removed): connect PayCall again',
+  stale_voucher: 'payment channel out of sync: retry the call',
+  voucher_expired: 'voucher expired (clock skew?): retry the call',
+  seller_not_allowed: "this seller is not in the agent's allowlist: allow it in the PayCall dashboard",
+  agent_daily_cap_exceeded: "this agent's daily cap reached: raise it in the PayCall dashboard or wait until tomorrow",
+  approval_required: 'price is above the approval threshold: the user must approve it in the PayCall dashboard (Spend → Approvals), then retry the same call',
+}
+
+// paid fetch result as text for llm tools (hosted + local mcp). reasons: host-specific overrides, spent: fallback charge
+export async function describeResponse(res: Response, opts: { reasons?: Record<string, string>; spent?: number; maxBody?: number } = {}) {
+  if (res.status === 402) {
+    const pr = decodePaymentHeader(res.headers.get('payment-required'))
+    const offered = pr?.accepts?.some((a: { scheme?: string }) => a.scheme === SCHEME)
+    const why = !offered ? 'payment required, but the server does not accept PayCall' : (opts.reasons?.[pr.error] ?? REASONS[pr.error] ?? `payment failed: ${pr.error}`)
+    return { text: `HTTP 402: ${why}`, isError: true }
+  }
+  const lines = [`HTTP ${res.status}`]
+  const b = await res.text()
+  // metered sse: final charge arrives as a trailing event, header only has the cap
+  const trailer = b.match(/event: paycall-receipt\ndata: (.+)/)?.[1]
+  const paid = (trailer && JSON.parse(trailer)) || decodePaymentHeader(res.headers.get('payment-response'))
+  if (paid?.pass && !paid.transaction) lines.push(`free: time pass active until ${paid.pass.expiresAt}`)
+  else if (paid?.success)
+    lines.push(
+      `paid ${usd(Number(paid.amount ?? opts.spent ?? 0))} from PayCall balance (tx ${paid.transaction})` +
+        (paid.units !== undefined ? `, metered ${paid.units} ${paid.unit === 'char' ? 'chars' : 'tokens'}, ${usd(Number(paid.refunded))} of the cap refunded` : '') +
+        (paid.pass ? `, pass valid until ${paid.pass.expiresAt}` : '') +
+        (paid.receipt ? '\nsigned receipt (verify at /.well-known/jwks.json): ' + paid.receipt : ''),
+    )
+  const max = opts.maxBody ?? 20_000
+  lines.push('', b.length > max ? `${b.slice(0, max)}\n…[truncated, ${b.length} chars total]` : b)
+  return { text: lines.join('\n'), isError: !res.ok }
+}
+
 // signed receipt (compact JWS, EdDSA) from PAYMENT-RESPONSE.receipt → payload if valid for that facilitator's jwks
 export async function verifyReceipt(jws: string, opts: { jwksUrl?: string; fetch?: typeof fetch } = {}) {
   const [h, p, sig] = jws.split('.')

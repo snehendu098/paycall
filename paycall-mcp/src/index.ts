@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { createAgent, decodePaymentHeader } from 'paycall-sdk'
+import { createAgent, describeResponse, usd } from 'paycall-sdk'
 import { z } from 'zod'
 import { KEY_FILE, loadKey, login, openBrowser, type Started } from './login'
 
@@ -24,17 +24,6 @@ async function getAgent() {
 }
 let pending: Started | undefined
 const NOT_LOGGED_IN = 'not logged in to PayCall: call the login tool, then the user approves the code in the browser'
-const MAX_BODY = 20_000
-const usd = (micros: number) => `$${micros / 1e6}`
-const REASONS: Record<string, string> = {
-  insufficient_funds: 'insufficient balance: top up in the PayCall dashboard',
-  agent_paused: 'this agent is paused: unpause it in the PayCall dashboard',
-  daily_cap_exceeded: 'daily spending cap reached: raise it in the PayCall dashboard or wait until tomorrow',
-  price_above_agent_limit: "price is above this agent's max price per call: raise it in the PayCall dashboard",
-  unknown_payer: 'this agent key is not registered (or was replaced): call the login tool to connect again',
-  stale_voucher: 'payment channel out of sync: retry the call',
-  voucher_expired: 'voucher expired (clock skew?): retry the call',
-}
 const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], isError })
 
 const server = new McpServer({ name: 'paycall', version: '0.1.0' })
@@ -61,28 +50,9 @@ server.registerTool(
     } catch (e) {
       return text(`request failed: ${(e as Error).message}`, true)
     }
-    if (res.status === 402) {
-      const pr = decodePaymentHeader(res.headers.get('payment-required'))
-      const offered = pr?.accepts?.some((a: { scheme?: string }) => a.scheme === 'paycall-prepaid')
-      const why = !offered ? 'payment required, but the server does not accept PayCall' : (REASONS[pr.error] ?? `payment failed: ${pr.error}`)
-      return text(`HTTP 402: ${why}`, true)
-    }
-    const lines = [`HTTP ${res.status}`]
-    const b = await res.text()
-    // metered sse: final charge arrives as a trailing event, header only has the cap
-    const trailer = b.match(/event: paycall-receipt\ndata: (.+)/)?.[1]
-    const paid = (trailer && JSON.parse(trailer)) || decodePaymentHeader(res.headers.get('payment-response'))
-    if (paid?.pass && !paid.transaction) lines.push(`free: time pass active until ${paid.pass.expiresAt}`)
-    else if (paid?.success)
-      lines.push(
-        // ponytail: spent delta fallback, wrong if parallel paid_fetch calls overlap
-        `paid ${usd(Number(paid.amount ?? agent.spent - before))} from PayCall balance (tx ${paid.transaction})` +
-          (paid.units !== undefined ? `, metered ${paid.units} ${paid.unit === 'char' ? 'chars' : 'tokens'}, ${usd(Number(paid.refunded))} of the cap refunded` : '') +
-          (paid.pass ? `, pass valid until ${paid.pass.expiresAt}` : '') +
-          (paid.receipt ? '\nsigned receipt (verify at /.well-known/jwks.json): ' + paid.receipt : ''),
-      )
-    lines.push('', b.length > MAX_BODY ? `${b.slice(0, MAX_BODY)}\n…[truncated, ${b.length} chars total]` : b)
-    return text(lines.join('\n'), !res.ok)
+    // ponytail: spent delta fallback, wrong if parallel paid_fetch calls overlap
+    const d = await describeResponse(res, { reasons: { unknown_payer: 'this agent key is not registered (or was replaced): call the login tool to connect again' }, spent: agent.spent - before })
+    return text(d.text, d.isError)
   },
 )
 
