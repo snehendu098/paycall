@@ -11,7 +11,7 @@ import { Act, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
 import { Switch } from '@/components/shadcn/switch'
 
 export type Agent = { pubkey: string; name: string; paused: boolean; maxPrice: number; dailyCap: number | null; approveAbove: number | null; allowedSellers: string[] | null; createdAt: string }
-type Patch = Partial<Pick<Agent, 'paused' | 'maxPrice' | 'dailyCap' | 'approveAbove' | 'allowedSellers'>>
+type Patch = Partial<Pick<Agent, 'name' | 'paused' | 'maxPrice' | 'dailyCap' | 'approveAbove' | 'allowedSellers'>>
 type Listing = { id: string; name: string; description: string | null; category: string | null; price: number; seller: string; sellerId?: string; url: string }
 
 const MCP_PATH = process.env.NEXT_PUBLIC_MCP_PATH ?? '/path/to/paycall-mcp/src/index.ts'
@@ -29,6 +29,7 @@ function AgentRow({ a, reload }: { a: Agent; reload: () => void }) {
   const [price, setPrice] = useState(toDollars(a.maxPrice))
   const [busy, setBusy] = useState(false)
   const [limits, setLimits] = useState(false)
+  const [dialog, setDialog] = useState<'rename' | 'remove'>()
   const bad = !PRICE.test(price.trim())
   const chips = [
     a.dailyCap !== null && `cap ${$(a.dailyCap)}/day`,
@@ -57,6 +58,27 @@ function AgentRow({ a, reload }: { a: Agent; reload: () => void }) {
     if (!(await patch({ paused: !on }, `${a.name} ${on ? 'resumed' : 'paused'}`))) setPaused(on)
   }
 
+  async function remove() {
+    setBusy(true)
+    try {
+      await pc('buyer', `agents/${a.pubkey}`, { method: 'DELETE' })
+      toast.success(`${a.name} removed`)
+      setDialog(undefined)
+      reload()
+    } catch (e) {
+      toast.error(`Couldn't remove ${a.name}`, { description: errMsg(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function rename(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const name = String(new FormData(e.currentTarget).get('name')).trim()
+    if (!name || name === a.name) return setDialog(undefined)
+    patch({ name }, `Renamed to ${name}`).then((ok) => ok && setDialog(undefined))
+  }
+
   function savePrice(e?: FormEvent) {
     e?.preventDefault()
     if (bad) return
@@ -73,10 +95,28 @@ function AgentRow({ a, reload }: { a: Agent; reload: () => void }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {chips.map((c) => <span key={c} className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{c}</span>)}
           <button type="button" onClick={() => setLimits(true)} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground">Limits</button>
+          <button type="button" onClick={() => setDialog('rename')} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground">Rename</button>
+          <button type="button" onClick={() => setDialog('remove')} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-destructive">Remove</button>
         </div>
       </div>
       <PDialog open={limits} onOpenChange={setLimits} title={`${a.name} limits`} description="Leave blank for no limit.">
         <AgentLimits a={a} onSave={(body) => patch(body, `${a.name} limits saved`).then((ok) => ok && setLimits(false))} />
+      </PDialog>
+      <PDialog open={dialog === 'rename'} onOpenChange={(o) => !o && setDialog(undefined)} title={`Rename ${a.name}`} description="Shown in your activity and approvals.">
+        <form onSubmit={rename} className="flex flex-col gap-5">
+          <Field label="Name" id={`${a.pubkey}-name`}>
+            <Input id={`${a.pubkey}-name`} name="name" defaultValue={a.name} maxLength={64} autoFocus required />
+          </Field>
+          <div className="flex justify-end">
+            <Act primary type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Act>
+          </div>
+        </form>
+      </PDialog>
+      <PDialog open={dialog === 'remove'} onOpenChange={(o) => !o && setDialog(undefined)} title={`Remove ${a.name}?`} description="Its key stops working right away, including Claude connections made with it. Past payments stay in your activity. This can't be undone; connect again to get a new key.">
+        <div className="flex justify-end gap-2">
+          <Act onClick={() => setDialog(undefined)}>Cancel</Act>
+          <Act onClick={remove} disabled={busy} className="border-destructive text-destructive hover:border-destructive hover:bg-destructive/10">{busy ? 'Removing…' : 'Remove agent'}</Act>
+        </div>
       </PDialog>
       <form onSubmit={savePrice} className="flex items-center gap-2">
         <span className="hidden text-xs text-muted-foreground sm:inline">Max / call</span>
