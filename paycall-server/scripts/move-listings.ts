@@ -10,17 +10,11 @@ if (!process.env.DATABASE_URL || !email) throw new Error('usage: DATABASE_URL=â€
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
 await db.connect()
 try {
-  const { rows: [u] } = await db.query('select "sellerId" from "user" where email = $1', [email])
-  if (!u?.sellerId) throw new Error(`${email}: no seller account (enable selling on Earn first)`)
-  const { rows: [s] } = await db.query('select id, name, paypal_email from sellers where id = $1', [u.sellerId])
-  await db.query('begin')
+  const { rows: [s] } = await db.query('select s.id, s.name, s.paypal_email from "user" u join sellers s on s.id = u."sellerId" where u.email = $1', [email])
+  if (!s) throw new Error(`${email}: no seller account (enable selling on Earn first)`)
   const { rows } = await db.query('update endpoints set seller_id = $1 where seller_id = any($2) returning id, name', [s.id, FROM])
-  await db.query('commit')
   console.log(`moved ${rows.length} to ${s.id} (${s.name}, payouts â†’ ${s.paypal_email}):`)
   for (const r of rows) console.log(`  ${r.id} ${r.name}`)
-} catch (e) {
-  await db.query('rollback').catch(() => {})
-  throw e
 } finally {
   await db.end()
 }

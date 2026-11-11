@@ -36,10 +36,9 @@ export async function verifyVoucher(v: Voucher) {
 // pass access without paying (x402 SIWX style: signed, time-boxed, origin+path bound, single-use nonce)
 // PAYCALL-AGENT: <pubkey>.<unix ts>.<nonce>.<sig over "paycall-agent:<ts>:<nonce>:<METHOD>:<url>">
 // caller must burn the nonce (agent_nonces) so a seen header can't be replayed
-export const AGENT_WINDOW = 300
 export async function verifyAgentHeader(h: string | undefined, method: string, url: string) {
   const [payer, ts, nonce, sig] = h?.split('.') ?? []
-  if (!payer || !sig || !/^[\w-]{16,64}$/.test(nonce ?? '') || !/^\d+$/.test(ts ?? '') || Math.abs(Date.now() / 1000 - Number(ts)) > AGENT_WINDOW) return
+  if (!payer || !sig || !/^[\w-]{16,64}$/.test(nonce ?? '') || !/^\d+$/.test(ts ?? '') || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return
   try {
     const key = await crypto.subtle.importKey('raw', fromB64url(payer), 'Ed25519', false, ['verify'])
     const ok = await crypto.subtle.verify('Ed25519', key, fromB64url(sig), new TextEncoder().encode(`paycall-agent:${ts}:${nonce}:${method.toUpperCase()}:${url}`))
