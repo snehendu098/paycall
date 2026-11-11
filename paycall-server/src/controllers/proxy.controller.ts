@@ -1,5 +1,5 @@
 import type { Context } from 'hono'
-import { and, eq, gt, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { agentNonces, agents, endpoints, entries, passes } from '../db/schema'
 import { demo } from '../demo'
 import { refund } from '../ledger'
@@ -86,7 +86,7 @@ export const forward = factory.createHandlers(async (c) => {
         .select({ expiresAt: passes.expiresAt })
         .from(passes)
         .innerJoin(agents, eq(agents.pubkey, passes.agentPubkey))
-        .where(and(eq(passes.agentPubkey, payer), eq(passes.endpointId, ep.id), gt(passes.expiresAt, sql`now()`), eq(agents.paused, false)))
+        .where(and(eq(passes.agentPubkey, payer), eq(passes.endpointId, ep.id), gt(passes.expiresAt, sql`now()`), eq(agents.paused, false), isNull(agents.deletedAt)))
       if (p) {
         const res = await upstream(c, ep, reqBody).catch(() => null)
         if (!res) return c.json({ error: 'upstream_unreachable' }, 502)

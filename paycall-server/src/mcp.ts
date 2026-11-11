@@ -99,7 +99,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
       const [o] = await db.select().from(owners).where(eq(owners.id, props.ownerId))
       const [a] = await db.select().from(agents).where(eq(agents.pubkey, props.agentPubkey))
       const today = await spentToday(db, { ownerId: props.ownerId })
-      if (!o || !a) return text('agent not found: reconnect PayCall', true)
+      if (!o || !a || a.deletedAt) return text('agent not found (removed?): reconnect PayCall', true)
       return text(
         [
           `agent: ${a.name}${a.paused ? ' (paused)' : ''}, max ${usd(a.maxPrice)}/call`,

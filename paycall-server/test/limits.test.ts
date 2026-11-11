@@ -124,3 +124,17 @@ test('endpoint pricing modes validated as a unit', async () => {
   expect(await (await patch({ name: 'x' })).json()).toMatchObject({ pricing: 'pass', name: 'x' })
   expect(await (await patch({ pricing: 'call' })).json()).toMatchObject({ pricing: 'call', passSeconds: null })
 })
+
+test('agent rename + delete: hidden from list, key can no longer pay, other owners can not touch it', async () => {
+  const as = (who: string, method: string, path: string, body?: unknown) =>
+    fetchW(path, { method, headers: { authorization: `Bearer ${SK}`, 'x-paycall-as': who, 'content-type': 'application/json' }, body: body && JSON.stringify(body) })
+  expect(await pay()).toBe('ok')
+  expect((await as('owner:own_1', 'PATCH', `/agents/${pubkey}`, { name: '  ' })).status).toBe(400)
+  expect(((await (await as('owner:own_1', 'PATCH', `/agents/${pubkey}`, { name: 'shopper' })).json()) as { name: string }).name).toBe('shopper')
+  await db.insert(owners).values({ id: 'own_2', email: 'p@x.io', apiKeyHash: 'h3' })
+  expect((await as('owner:own_2', 'DELETE', `/agents/${pubkey}`)).status).toBe(404)
+  expect((await as('owner:own_1', 'DELETE', `/agents/${pubkey}`)).status).toBe(204)
+  expect((await (await owner('/owners/me')).json()) as { agents: unknown[] }).toMatchObject({ agents: [] })
+  expect(await pay()).toBe('unknown_payer')
+  expect((await as('owner:own_1', 'PATCH', `/agents/${pubkey}`, { paused: false })).status).toBe(404) // can't revive
+})

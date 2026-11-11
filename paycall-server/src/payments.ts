@@ -49,7 +49,7 @@ export async function checkPayment(db: DB, sellerId: string, { paymentPayload, p
     .from(agents)
     .innerJoin(owners, eq(owners.id, agents.ownerId))
     .where(eq(agents.pubkey, v.payer))
-  if (!row) return fail('unknown_payer')
+  if (!row || row.agent.deletedAt) return fail('unknown_payer')
   const { agent, owner } = row
   if (agent.paused) return fail('agent_paused')
   if (amount > agent.maxPrice) return fail('price_above_agent_limit')

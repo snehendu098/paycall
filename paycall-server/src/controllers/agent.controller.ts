@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import { agents } from '../db/schema'
@@ -18,9 +18,12 @@ export const create = factory.createHandlers(
   },
 )
 
+const mine = (pubkey: string, ownerId: string) => and(eq(agents.pubkey, pubkey), eq(agents.ownerId, ownerId), isNull(agents.deletedAt))
+
 export const update = factory.createHandlers(
   zValidator('json', z
       .object({
+        name: z.string().trim().min(1).max(64),
         paused: z.boolean(),
         maxPrice: zMicros,
         dailyCap: zMicros.nullable(),
@@ -32,9 +35,20 @@ export const update = factory.createHandlers(
     const [agent] = await c.var.db
       .update(agents)
       .set(c.req.valid('json'))
-      .where(and(eq(agents.pubkey, c.req.param('pubkey')!), eq(agents.ownerId, c.var.principal.id)))
+      .where(mine(c.req.param('pubkey')!, c.var.principal.id))
       .returning()
     if (!agent) throw new HTTPException(404, { message: 'unknown agent' })
     return c.json(agent)
   },
 )
+
+// revoke + hide. hosted MCP grants holding this key stop working (payments + wallet_info check deletedAt)
+export const remove = factory.createHandlers(async (c) => {
+  const [agent] = await c.var.db
+    .update(agents)
+    .set({ deletedAt: new Date(), paused: true })
+    .where(mine(c.req.param('pubkey')!, c.var.principal.id))
+    .returning({ pubkey: agents.pubkey })
+  if (!agent) throw new HTTPException(404, { message: 'unknown agent' })
+  return c.body(null, 204)
+})

@@ -1,4 +1,4 @@
-import { boolean, pgTable, text } from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 import { createdAt, micros } from './common.schema'
 import { owners } from './owner.schema'
 
@@ -12,4 +12,6 @@ export const agents = pgTable('agents', {
   approveAbove: micros(), // calls priced above → human approval
   allowedSellers: text().array(), // null = any seller
   createdAt: createdAt(),
+  // soft delete: channels + ledger keep the pubkey (payouts sum channel cumulatives), key can never pay again
+  deletedAt: timestamp({ withTimezone: true }),
 })

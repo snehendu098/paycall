@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { netAmount } from '../ledger'
 import { z } from 'zod'
 import { sumMicros } from '../db'
@@ -20,7 +20,7 @@ export const me = factory.createHandlers(async (c) => {
   const id = c.var.principal.id
   // sequential: one pg client per request, no concurrent queries
   const [{ apiKeyHash: _, ...owner }] = await db.select().from(owners).where(eq(owners.id, id))
-  const agentList = await db.select().from(agents).where(eq(agents.ownerId, id))
+  const agentList = await db.select().from(agents).where(and(eq(agents.ownerId, id), isNull(agents.deletedAt)))
   const spendBySeller = await db
     .select({ sellerId: entries.sellerId, spent: netAmount })
     .from(entries)
