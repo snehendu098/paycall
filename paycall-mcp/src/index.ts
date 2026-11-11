@@ -68,10 +68,19 @@ server.registerTool(
       return text(`HTTP 402: ${why}`, true)
     }
     const lines = [`HTTP ${res.status}`]
-    const receipt = decodePaymentHeader(res.headers.get('payment-response'))
-    // ponytail: spent delta, wrong if parallel paid_fetch calls overlap; sdk per-call receipt if needed
-    if (receipt?.success) lines.push(`paid ${usd(agent.spent - before)} from PayCall balance (tx ${receipt.transaction})`)
     const b = await res.text()
+    // metered sse: final charge arrives as a trailing event, header only has the cap
+    const trailer = b.match(/event: paycall-receipt\ndata: (.+)/)?.[1]
+    const paid = (trailer && JSON.parse(trailer)) || decodePaymentHeader(res.headers.get('payment-response'))
+    if (paid?.pass && !paid.transaction) lines.push(`free: time pass active until ${paid.pass.expiresAt}`)
+    else if (paid?.success)
+      lines.push(
+        // ponytail: spent delta fallback, wrong if parallel paid_fetch calls overlap
+        `paid ${usd(Number(paid.amount ?? agent.spent - before))} from PayCall balance (tx ${paid.transaction})` +
+          (paid.units !== undefined ? `, metered ${paid.units} ${paid.unit === 'char' ? 'chars' : 'tokens'}, ${usd(Number(paid.refunded))} of the cap refunded` : '') +
+          (paid.pass ? `, pass valid until ${paid.pass.expiresAt}` : '') +
+          (paid.receipt ? '\nsigned receipt (verify at /.well-known/jwks.json): ' + paid.receipt : ''),
+      )
     lines.push('', b.length > MAX_BODY ? `${b.slice(0, MAX_BODY)}\n…[truncated, ${b.length} chars total]` : b)
     return text(lines.join('\n'), !res.ok)
   },
