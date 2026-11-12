@@ -18,7 +18,7 @@ const C: Components = {
   blockquote: ({ children }) => <blockquote className="my-4 border-l border-foreground/30 pl-4 text-muted-foreground">{children}</blockquote>,
   hr: () => <hr className="my-6 border-border" />,
   code: ({ children }) => <code className="border border-border bg-card px-1 py-px font-mono text-[12.5px] text-foreground">{children}</code>,
-  pre: ({ node }) => <Code text={text(node?.children[0] as Node).replace(/\n$/, '')} className="my-4 [&_pre]:text-[12.5px]" />,
+  pre: ({ node }) => <Code text={text(node?.children[0] as Node).replace(/\n$/, '')} className="my-4 [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:text-[12.5px]" />,
   table: ({ children }) => <div className="my-4 overflow-x-auto border border-border"><table className="w-full border-collapse text-left text-[13px]">{children}</table></div>,
   th: ({ children }) => <th className="border-b border-border px-3 py-2 font-mono text-[11px] font-normal uppercase tracking-wider text-muted-foreground">{children}</th>,
   td: ({ children }) => <td className="border-b border-border px-3 py-2 align-top text-foreground/80">{children}</td>,
