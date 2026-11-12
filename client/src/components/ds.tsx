@@ -10,6 +10,7 @@ import { Button } from '@/components/shadcn/button'
 import { Card } from '@/components/shadcn/card'
 import { Input as SInput } from '@/components/shadcn/input'
 import { Label as SLabel } from '@/components/shadcn/label'
+import { Select as SSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/shadcn/select'
 import { Separator } from '@/components/shadcn/separator'
 import { Table as STable, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/shadcn/table'
 
@@ -259,6 +260,20 @@ export function Input({ className, ...rest }: ComponentProps<'input'>) {
       )}
       {...rest}
     />
+  )
+}
+
+/** Square select matching Input (shadcn Select). `name` submits via radix hidden select. */
+export function Select({ opts, id, className, ...rest }: ComponentProps<typeof SSelect> & { opts: { v: string; label: string }[]; id?: string; className?: string }) {
+  return (
+    <SSelect {...rest}>
+      <SelectTrigger id={id} className={cn('h-11 w-full bg-card px-3 text-sm hover:border-foreground/30 focus-visible:border-foreground focus-visible:ring-0 data-[size=default]:h-11 dark:bg-card dark:hover:bg-card', className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper" className="bg-card">
+        {opts.map((o) => <SelectItem key={o.v} value={o.v} className="text-[13px]">{o.label}</SelectItem>)}
+      </SelectContent>
+    </SSelect>
   )
 }
 

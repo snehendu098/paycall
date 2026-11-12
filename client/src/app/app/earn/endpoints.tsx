@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { $, API, dur, per, toDollars, toMicros, type Pricing, type Route } from '@/lib/api'
 import { pc } from '@/lib/pc'
 import { XIcon } from '@phosphor-icons/react'
-import { Code, Input } from '@/components/ds'
+import { Code, Input, Select } from '@/components/ds'
 import { Act, CopyChip, ease, errMsg, Field, Nothing, PDialog, Skel, Verified } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
@@ -167,6 +167,8 @@ export const MODES = [
   { k: 'pass', label: 'Time pass', price: 'Price per pass' },
 ] as const
 export const PASSES = [[3600, '1 hour'], [86_400, '24 hours'], [604_800, '7 days'], [2_592_000, '30 days']] as const
+/** Pass select opts; keeps a non-preset duration (set via api) instead of silently overwriting it. */
+export const passOpts = (cur?: number | null) => [...PASSES, ...(cur && !PASSES.some(([s]) => s === cur) ? [[cur, dur(cur)] as const] : [])].map(([s, l]) => ({ v: String(s), label: l }))
 const DOLLARS = 'Dollars > 0, up to 6 decimals'
 type PBody = { price: number } & ({ pricing: 'call' } | { pricing: 'token' | 'char'; maxAmount: number } | { pricing: 'pass'; passSeconds: number })
 
@@ -220,11 +222,7 @@ export function PricingFields({ id, d, errs = {} }: { id: string; d?: Pricing; e
         )}
         {mode === 'pass' && (
           <Field label="Pass lasts" id={`${id}-pass`}>
-            <select id={`${id}-pass`} name="passSeconds" defaultValue={d?.passSeconds ?? 86_400} className="h-11 w-full border border-input bg-card px-3 text-sm outline-none transition-colors hover:border-foreground/30 focus-visible:border-foreground">
-              {PASSES.map(([s, l]) => <option key={s} value={s}>{l}</option>)}
-              {/* keep a non-preset duration (set via api) instead of silently overwriting it */}
-              {d?.passSeconds && !PASSES.some(([s]) => s === d.passSeconds) && <option value={d.passSeconds}>{dur(d.passSeconds)}</option>}
-            </select>
+            <Select id={`${id}-pass`} name="passSeconds" defaultValue={String(d?.passSeconds ?? 86_400)} opts={passOpts(d?.passSeconds)} />
           </Field>
         )}
       </div>
