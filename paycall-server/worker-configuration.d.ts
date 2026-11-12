@@ -10,6 +10,7 @@ interface __BaseEnv_CloudflareBindings {
 	RESEND_FROM: "PayCall <onboarding@resend.dev>";
 	FEE_BPS: 200;
 	PAYOUT_MIN_MICROS: 500000;
+	ADMIN_EMAILS: string;
 	PAYPAL_CLIENT_ID: string;
 	PAYPAL_CLIENT_SECRET: string;
 	PAYPAL_WEBHOOK_ID: string;
@@ -29,7 +30,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PAYPAL_API" | "DASHBOARD_ORIGIN" | "RESEND_FROM" | "FEE_BPS" | "PAYOUT_MIN_MICROS" | "PAYPAL_CLIENT_ID" | "PAYPAL_CLIENT_SECRET" | "PAYPAL_WEBHOOK_ID" | "ADMIN_KEY" | "PAYCALL_SERVICE_KEY" | "BETTER_AUTH_SECRET" | "RESEND_API_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PAYPAL_API" | "DASHBOARD_ORIGIN" | "RESEND_FROM" | "FEE_BPS" | "PAYOUT_MIN_MICROS" | "ADMIN_EMAILS" | "PAYPAL_CLIENT_ID" | "PAYPAL_CLIENT_SECRET" | "PAYPAL_WEBHOOK_ID" | "ADMIN_KEY" | "PAYCALL_SERVICE_KEY" | "BETTER_AUTH_SECRET" | "RESEND_API_KEY">> {}
 }
 declare module "*.txt" {
 	const value: string;

@@ -27,6 +27,7 @@
     "DASHBOARD_ORIGIN": "https://paycall.live",
     "RESEND_FROM": "PayCall <login@paycall.live>",
     "FEE_BPS": 200,
-    "PAYOUT_MIN_MICROS": 500000
+    "PAYOUT_MIN_MICROS": 500000,
+    "ADMIN_EMAILS": "" // comma-separated dashboard admins (session email)
   }
 }

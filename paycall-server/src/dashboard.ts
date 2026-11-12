@@ -51,7 +51,11 @@ export function makeAuth(env: CloudflareBindings) {
 const ALLOW: Record<string, RegExp> = {
   buyer: /^(owners\/me|agents|approvals|disputes|topup|entries|events|device|oauth)(\/|$)/,
   seller: /^(sellers\/me|endpoints|entries|disputes|events)(\/|$)/,
+  admin: /^(disputes|endpoints|stats|settle-now)(\/|$)/, // → /admin/*
 }
+// admin = verified session email listed in ADMIN_EMAILS (exact, case-insensitive)
+const isAdmin = (env: CloudflareBindings, u: { email: string; emailVerified: boolean }) =>
+  u.emailVerified && (env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(u.email.toLowerCase())
 const Enable = z.discriminatedUnion('role', [
   z.object({ role: z.literal('buyer') }),
   z.object({ role: z.literal('seller'), name: z.string().trim().min(1).max(64), paypalEmail: z.email() }),
@@ -93,6 +97,13 @@ export const dashboard = (app: App) =>
       return c.json({ [field]: id })
     })
 
+    // nav: show admin link
+    .get('/pc/me', async (c) => {
+      const s = await c.var.auth.api.getSession({ headers: c.req.raw.headers })
+      if (!s) return c.json({ error: 'unauthorized' }, 401)
+      return c.json({ admin: isAdmin(c.env, s.user) })
+    })
+
     // session → service principal, dispatched in-process to the api
     .all('/pc/:role/*', async (c) => {
       const role = c.req.param('role')
@@ -102,13 +113,18 @@ export const dashboard = (app: App) =>
       const s = await c.var.auth.api.getSession({ headers: c.req.raw.headers })
       if (!s) return c.json({ error: 'unauthorized' }, 401)
       const u = s.user as typeof s.user & { ownerId?: string; sellerId?: string }
-      const id = role === 'buyer' ? u.ownerId : u.sellerId
-      if (!id) return c.json({ error: 'not_enabled' }, 404)
-
-      const headers = new Headers({ authorization: `Bearer ${c.env.PAYCALL_SERVICE_KEY}`, 'x-paycall-as': `${role === 'buyer' ? 'owner' : 'seller'}:${id}` })
+      let headers: Headers
+      if (role === 'admin') {
+        if (!isAdmin(c.env, u)) return c.json({ error: 'forbidden' }, 403)
+        headers = new Headers({ authorization: `Bearer ${c.env.ADMIN_KEY}` })
+      } else {
+        const id = role === 'buyer' ? u.ownerId : u.sellerId
+        if (!id) return c.json({ error: 'not_enabled' }, 404)
+        headers = new Headers({ authorization: `Bearer ${c.env.PAYCALL_SERVICE_KEY}`, 'x-paycall-as': `${role === 'buyer' ? 'owner' : 'seller'}:${id}` })
+      }
       const type = c.req.header('content-type')
       if (type) headers.set('content-type', type)
-      const res = await app.fetch(new Request(`${url.origin}/${path}${url.search}`, { method: c.req.method, headers, body: c.req.method === 'GET' || c.req.method === 'HEAD' ? undefined : await c.req.arrayBuffer(), signal: c.req.raw.signal }), c.env, c.executionCtx as ExecutionContext)
+      const res = await app.fetch(new Request(`${url.origin}/${role === 'admin' ? 'admin/' : ''}${path}${url.search}`, { method: c.req.method, headers, body: c.req.method === 'GET' || c.req.method === 'HEAD' ? undefined : await c.req.arrayBuffer(), signal: c.req.raw.signal }), c.env, c.executionCtx as ExecutionContext)
       // no-transform: proxies don't buffer sse
       const out = new Response(res.body, res)
       out.headers.set('cache-control', 'no-cache, no-transform')
