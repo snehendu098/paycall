@@ -40,6 +40,12 @@ export type Entry = {
 
 export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: string; amount: number; reason: string; status: 'open' | 'escalated' | 'refunded' | 'rejected'; createdAt: string; resolvedAt: string | null; reply: string | null; adminNote: string | null; decidedBy: 'seller' | 'admin' | 'buyer' | 'timeout' | null; escalatedAt: string | null; resource: string | null; chargedAt: string }
 
+// admin view of a dispute: + parties, listing (null if url isn't /p/<id>), charge
+export type AdminDispute = Dispute & Partial<Pricing> & {
+  charged: number; units: number | null; unit: 'token' | 'char' | null; agentPubkey: string | null; agentName: string | null
+  ownerEmail: string; seller: string; sellerPaypal: string; endpointId: string | null; endpoint: string | null
+}
+
 export type Pricing = { pricing: 'call' | 'token' | 'char' | 'pass'; price: number; maxAmount: number | null; passSeconds: number | null }
 // 3600 → 1h, 604800 → 7d (86400 stays 24h)
 export const dur = (s: number) => (s % 86_400 === 0 && s > 86_400 ? `${s / 86_400}d` : s % 3600 === 0 ? `${s / 3600}h` : `${Math.round(s / 60)}m`)
