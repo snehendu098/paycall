@@ -3,7 +3,7 @@ import { $ } from 'bun'
 import assert from 'node:assert/strict'
 import express from 'express'
 import { Hono } from 'hono'
-import { createAgent, decodePaymentHeader, generateKey } from 'paycall-sdk'
+import { createAgent, decodePaymentHeader, generateKey } from '@paycall-live/sdk'
 import { paycallExpress, paycallHono, withPaycall } from '../src'
 
 const facilitator = process.env.FACILITATOR ?? 'http://localhost:8798'

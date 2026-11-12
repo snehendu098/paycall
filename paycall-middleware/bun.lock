@@ -5,11 +5,11 @@
     "": {
       "name": "paycall-middleware",
       "devDependencies": {
+        "@paycall-live/sdk": "^0.1.0",
         "@types/bun": "latest",
         "@types/express": "^5.0.6",
         "express": "^5.3.0",
         "hono": "^4.13.17",
-        "paycall-sdk": "file:../paycall-sdk",
         "typescript": "5",
       },
       "peerDependencies": {
@@ -23,6 +23,8 @@
     },
   },
   "packages": {
+    "@paycall-live/sdk": ["@paycall-live/sdk@0.1.0", "", {}, "sha512-W1m1nyHhdpIWKL9Ou/x3FvG1EvXFC8RGguzyI+aWHlAbbMPawUf++oPoy5AkhoVrOEnw33M0+12D5IPJV99k3A=="],
+
     "@types/body-parser": ["@types/body-parser@1.19.6", "", { "dependencies": { "@types/connect": "*", "@types/node": "*" } }, "sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g=="],
 
     "@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
@@ -140,8 +142,6 @@
     "parseurl": ["parseurl@1.3.3", "", {}, "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ=="],
 
     "path-to-regexp": ["path-to-regexp@8.4.2", "", {}, "sha512-qRcuIdP69NPm4qbACK+aDogI5CBDMi1jKe0ry5rSQJz8JVLsC7jV8XpiJjGRLLol3N+R5ihGYcrPLTno6pAdBA=="],
-
-    "paycall-sdk": ["paycall-sdk@file:../paycall-sdk", { "devDependencies": { "@types/bun": "latest" }, "peerDependencies": { "typescript": "^5" } }],
 
     "proxy-addr": ["proxy-addr@2.0.8", "", { "dependencies": { "forwarded": "0.2.0", "ipaddr.js": "1.9.1" } }, "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ=="],
 
