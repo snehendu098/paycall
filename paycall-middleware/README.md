@@ -1,11 +1,11 @@
-# paycall-middleware
+# @paycall-live/middleware
 
 Charge per request on your own API with PayCall (x402 `paycall-prepaid`), no PayCall proxy needed. Unpaid request gets a `402` + `PAYMENT-REQUIRED`. Paid request: voucher verified, your handler runs, buyer charged only if it returns 2xx, `PAYMENT-RESPONSE` set on the reply.
 
 ## Install
 
 ```sh
-bun add ../paycall-middleware   # npm later
+npm i @paycall-live/middleware   # or bun add / pnpm add
 ```
 
 API key: PayCall dashboard → Earn → API key (`pc_seller_…`).
@@ -17,21 +17,21 @@ const opts = { apiKey: process.env.PAYCALL_KEY!, price: '0.01' } // dollars. fac
 ## Next.js route handler
 
 ```ts
-import { withPaycall } from 'paycall-middleware'
+import { withPaycall } from '@paycall-live/middleware'
 export const GET = withPaycall(async () => Response.json({ joke: '...' }), opts)
 ```
 
 ## Bun.serve (also Workers, Deno: any `(Request) => Response`)
 
 ```ts
-import { withPaycall } from 'paycall-middleware'
+import { withPaycall } from '@paycall-live/middleware'
 Bun.serve({ fetch: withPaycall((req) => Response.json({ ok: true }), opts) })
 ```
 
 ## Hono
 
 ```ts
-import { paycallHono } from 'paycall-middleware'
+import { paycallHono } from '@paycall-live/middleware'
 app.use('/paid/*', paycallHono(opts))
 app.get('/paid/joke', (c) => c.json({ joke: '...' }))
 ```
@@ -39,7 +39,7 @@ app.get('/paid/joke', (c) => c.json({ joke: '...' }))
 ## Express
 
 ```ts
-import { paycallExpress } from 'paycall-middleware'
+import { paycallExpress } from '@paycall-live/middleware'
 app.use('/paid', paycallExpress(opts))
 app.get('/paid/joke', (req, res) => res.json({ joke: '...' }))
 ```
@@ -51,7 +51,7 @@ app.get('/paid/joke', (req, res) => res.json({ joke: '...' }))
 ## How buyers pay
 
 - Claude: PayCall MCP, just ask it to call your URL.
-- Code: `paycall-sdk`, `(await createAgent(privateKey)).fetch(url)` handles 402 → sign → retry.
+- Code: `@paycall-live/sdk`, `(await createAgent(privateKey)).fetch(url)` handles 402 → sign → retry.
 
 ## Rules / notes
 
@@ -88,6 +88,6 @@ The PayCall proxy does this automatically for `token` / `char` endpoints, includ
 
 ## Receipts, refunds, disputes
 
-- `PAYMENT-RESPONSE` carries `receipt`: an EdDSA JWS. Verify with `verifyReceipt(jws)` from `paycall-sdk` (keys at `{facilitator}/.well-known/jwks.json`).
+- `PAYMENT-RESPONSE` carries `receipt`: an EdDSA JWS. Verify with `verifyReceipt(jws)` from `@paycall-live/sdk` (keys at `{facilitator}/.well-known/jwks.json`).
 - Refund a charge: `POST {facilitator}/entries/<transaction>/refund` with your seller key, body `{ "amount": micros }` (omit = everything left).
 - Buyers can dispute a charge for 7 days; open disputes are held out of your payout until you refund or reject them (Earn → Disputes).

@@ -1,13 +1,47 @@
 {
-  "name": "paycall-sdk",
-  "module": "src/index.ts",
+  "name": "@paycall-live/sdk",
+  "description": "x402 agent client for PayCall: drop-in fetch that pays HTTP 402s from a prepaid PayPal balance with signed Ed25519 vouchers.",
+  "keywords": [
+    "x402",
+    "paypal",
+    "ai-agents",
+    "payments",
+    "http-402",
+    "micropayments"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snehendu098/paycall.git",
+    "directory": "paycall-sdk"
+  },
+  "homepage": "https://paycall.live",
   "type": "module",
-  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outdir dist --target browser --packages external && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "exports": "./src/index.ts"
+    "@types/bun": "latest",
+    "typescript": "5"
+  }
 }

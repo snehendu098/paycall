@@ -1,21 +1,59 @@
 {
-  "name": "paycall-middleware",
-  "module": "src/index.ts",
+  "name": "@paycall-live/middleware",
+  "description": "Charge per request on your own API with PayCall (x402). Web standard handlers, Hono and Express.",
+  "keywords": [
+    "x402",
+    "paypal",
+    "payments",
+    "middleware",
+    "hono",
+    "express",
+    "nextjs",
+    "http-402"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snehendu098/paycall.git",
+    "directory": "paycall-middleware"
+  },
+  "homepage": "https://paycall.live",
   "type": "module",
-  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outdir dist --target browser --packages external && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/express": "^5.0.6",
     "express": "^5.3.0",
     "hono": "^4.13.17",
-    "paycall-sdk": "file:../paycall-sdk"
+    "paycall-sdk": "file:../paycall-sdk",
+    "typescript": "5"
   },
   "peerDependencies": {
-    "typescript": "^5",
     "hono": "^4",
     "express": "^4 || ^5"
   },
-  "exports": "./src/index.ts",
   "peerDependenciesMeta": {
     "hono": {
       "optional": true
