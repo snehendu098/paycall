@@ -11,7 +11,7 @@ import { act, Act, Block, Empty, errMsg, Field, Nothing, Num, Page, PageSkeleton
 import { EndpointList, type Endpoint } from './endpoints'
 
 type Payout = { id: string; gross: number; net: number; status: 'pending' | 'paid' | 'failed'; createdAt: string }
-type Me = { seller: { id: string; name: string; paypalEmail: string; paidOut: number; pendingPayout: number }; earned: number; refunded: number; held: number; owed: number; payouts: Payout[] }
+type Me = { seller: { id: string; name: string; paypalEmail: string; paidOut: number; pendingPayout: number; keyName: string | null; keyHint: string | null; keyCreatedAt: string | null }; earned: number; refunded: number; held: number; owed: number; payouts: Payout[] }
 
 const MIN = 500_000 // server payout threshold
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -125,7 +125,7 @@ function Earn() {
         )}
       </Block>
 
-      <ApiKey />
+      {d && <ApiKey s={d.seller} changed={() => me.reload()} />}
 
       <Block title="Activity" aside={<LiveDot live={live} />}>
         <Activity role="seller" rows={rows} fresh={fresh} onChanged={changed} />
@@ -142,19 +142,28 @@ export const GET = withPaycall(
   { apiKey: process.env.PAYCALL_KEY!, price: '0.01' },
 )`
 
-/** Seller key for self-hosted paycall-middleware. Two-step button since rotating kills the old key. */
-function ApiKey() {
-  const [sure, setSure] = useState(false)
+/** Seller key for self-hosted paycall-middleware. Only hint kept server-side; full key shown once. */
+function ApiKey({ s, changed }: { s: Me['seller']; changed: () => void }) {
+  const [sure, setSure] = useState<'new' | 'revoke'>()
   const [busy, setBusy] = useState(false)
   const [key, setKey] = useState<string>()
+  const [name, setName] = useState('')
+  const has = !!s.keyHint
 
-  async function gen() {
+  async function run(what: 'new' | 'revoke') {
+    if (what === 'new' && !name.trim()) return toast.error('Name the key, e.g. test-server')
     setBusy(true)
     try {
-      setKey((await pc<{ apiKey: string }>('seller', 'sellers/me/key', { method: 'POST' })).apiKey)
-      setSure(false)
+      if (what === 'new') setKey((await pc<{ apiKey: string }>('seller', 'sellers/me/key', { method: 'POST', body: { name: name.trim() } })).apiKey)
+      else {
+        await pc('seller', 'sellers/me/key', { method: 'DELETE' })
+        toast.success('Key revoked', { description: 'Apps using it now get 401.' })
+      }
+      setSure(undefined)
+      setName('')
+      changed()
     } catch (e) {
-      toast.error("Couldn't generate key", { description: errMsg(e) })
+      toast.error(what === 'new' ? "Couldn't generate key" : "Couldn't revoke key", { description: errMsg(e) })
     } finally {
       setBusy(false)
     }
@@ -162,15 +171,31 @@ function ApiKey() {
 
   return (
     <Block title="API key">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4" data-testid="api-key">
-        <div className="text-sm">
-          <p className="text-muted-foreground">Charge for an API on your own server. Use this key with <span className="font-mono text-foreground">@paycall-live/middleware</span>.</p>
-          <p className="mt-1 text-xs text-muted-foreground">{sure ? 'Sure? Apps using the old key stop working.' : 'Generating a new key turns off the old one.'}</p>
-        </div>
-        <div className="flex gap-2">
-          {sure && <Act onClick={() => setSure(false)} disabled={busy}>Cancel</Act>}
-          <Act primary={sure} onClick={() => (sure ? gen() : setSure(true))} disabled={busy}>{busy ? 'Generating…' : sure ? 'Yes, generate' : 'Generate new key'}</Act>
-        </div>
+      <div className="flex flex-col gap-4 border-t border-border pt-4" data-testid="api-key">
+        <p className="text-sm text-muted-foreground">Charge for an API on your own server. Use this key with <span className="font-mono text-foreground">@paycall-live/middleware</span>.</p>
+        {has ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border border-border px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm">{s.keyName}</p>
+              <p className="mt-0.5 font-mono text-xs text-muted-foreground"><span className="text-foreground">{s.keyHint}</span>{s.keyCreatedAt && <span suppressHydrationWarning> · created {ago(s.keyCreatedAt)}</span>}</p>
+            </div>
+            {sure === 'revoke' ? (
+              <div className="flex gap-2">
+                <Act onClick={() => setSure(undefined)} disabled={busy}>Cancel</Act>
+                <Act primary onClick={() => run('revoke')} disabled={busy}>{busy ? 'Revoking…' : 'Yes, revoke'}</Act>
+              </div>
+            ) : <Act onClick={() => setSure('revoke')} disabled={busy}>Revoke</Act>}
+          </div>
+        ) : <p className="text-xs text-muted-foreground">No active key.</p>}
+        {sure === 'revoke' && <p className="text-xs text-muted-foreground">Sure? Apps using this key stop working right away.</p>}
+        <form onSubmit={(e) => { e.preventDefault(); if (has && sure !== 'new') setSure('new'); else run('new') }} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input aria-label="Key name" value={name} onChange={(e) => setName(e.target.value)} maxLength={64} placeholder="Key name, e.g. test-server" className="sm:max-w-xs" />
+          <div className="flex gap-2">
+            {sure === 'new' && <Act onClick={() => setSure(undefined)} disabled={busy}>Cancel</Act>}
+            <Act primary={sure === 'new'} type="submit" disabled={busy}>{busy && sure !== 'revoke' ? 'Generating…' : sure === 'new' ? 'Yes, replace key' : has ? 'Generate new key' : 'Generate key'}</Act>
+          </div>
+        </form>
+        {has && <p className="text-xs text-muted-foreground">{sure === 'new' ? `Sure? ${s.keyName} stops working.` : 'One key at a time: a new key turns off the current one.'}</p>}
       </div>
       <PDialog open={!!key} onOpenChange={(o) => !o && setKey(undefined)} wide title="Your API key" description="Shown once. Copy it now.">
         <div className="flex flex-col gap-5 text-[13px]">

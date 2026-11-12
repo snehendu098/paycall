@@ -853,7 +853,7 @@ else console.log(await res.json(), 'spent', usd(agent.spent))`}</Pre>
             body: (
               <>
                 <Pre>{`npm i @paycall-live/middleware   # or bun add / pnpm add`}</Pre>
-                <P>Seller API key: dashboard → Earn → API key (<C>pc_seller_…</C>, shown once).</P>
+                <P>Seller API key: dashboard → Earn → API key. Name it, copy it (<C>pc_seller_…</C>, shown once); only its name and a short hint stay visible. Revoke there anytime.</P>
                 <Pre>{`const opts = { apiKey: process.env.PAYCALL_KEY!, price: '0.01' } // dollars; facilitator? defaults to ${API}`}</Pre>
               </>
             ),
@@ -1305,7 +1305,8 @@ export const GET = withPaycall(async () => Response.json(await radar()), { ...op
                 head={['Route', 'Does']}
                 rows={[
                   [<C key="c">GET /sellers/me</C>, 'Seller, earned, refunded, held, owed, last 20 payouts.'],
-                  [<C key="c">POST /sellers/me/key</C>, 'Rotate the API key. The old key stops working now.'],
+                  [<C key="c">POST /sellers/me/key</C>, <><C>{'{ name }'}</C> → new key, shown once. The old key stops working now.</>],
+                  [<C key="c">DELETE /sellers/me/key</C>, 'Revoke the API key. Calls with it get 401 right away.'],
                   [<C key="c">POST /endpoints</C>, <A key="a" href="/docs/guides/list-an-api#fields">Create a listing</A>],
                   [<C key="c">GET /endpoints</C>, 'Your listings (secrets never returned, only hasAuth).'],
                   [<C key="c">PATCH /endpoints/:id</C>, 'Partial update. upstreamHeaders: object = replace, null = clear. Hosted: routes replaced + re-probed.'],
