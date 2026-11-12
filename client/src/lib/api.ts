@@ -38,7 +38,7 @@ export type Entry = {
   createdAt: string
 }
 
-export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: string; amount: number; reason: string; status: 'open' | 'escalated' | 'refunded' | 'rejected'; createdAt: string; resolvedAt: string | null; reply: string | null; decidedBy: 'seller' | 'admin' | 'timeout' | null; escalatedAt: string | null; resource: string | null; chargedAt: string }
+export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: string; amount: number; reason: string; status: 'open' | 'escalated' | 'refunded' | 'rejected'; createdAt: string; resolvedAt: string | null; reply: string | null; adminNote: string | null; decidedBy: 'seller' | 'admin' | 'timeout' | null; escalatedAt: string | null; resource: string | null; chargedAt: string }
 
 export type Pricing = { pricing: 'call' | 'token' | 'char' | 'pass'; price: number; maxAmount: number | null; passSeconds: number | null }
 // 3600 → 1h, 604800 → 7d (86400 stays 24h)

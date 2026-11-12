@@ -53,7 +53,7 @@ test('admin bff: non-admin 403, admin lists queue + decides escalated dispute', 
   expect(q).toMatchObject([{ id: d!.id, resource: '/x' }])
   const r = await call(boss, `/api/pc/admin/disputes/${d!.id}`, { action: 'refund', reply: 'upstream broke' })
   expect(r.status).toBe(200)
-  expect(await r.json()).toMatchObject({ status: 'refunded', decidedBy: 'admin', reply: 'upstream broke' })
+  expect(await r.json()).toMatchObject({ status: 'refunded', decidedBy: 'admin', reply: 'was fine', adminNote: 'upstream broke' })
   expect((await db.select().from(owners).where(eq(owners.id, 'own_1')))[0]!.balance).toBe(10_000)
   expect(await (await call(boss, '/api/pc/admin/disputes')).json()).toEqual([])
 

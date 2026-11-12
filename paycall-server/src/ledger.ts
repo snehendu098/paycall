@@ -99,7 +99,7 @@ export async function decideDispute(db: DB, id: number, by: By, action: 'refund'
   return db.transaction(async (tx) => {
     const [d] = await tx
       .update(disputes)
-      .set({ status: action === 'refund' ? 'refunded' : 'rejected', resolvedAt: new Date(), decidedBy: typeof by === 'string' ? by : 'seller', ...(reply && { reply }) })
+      .set({ status: action === 'refund' ? 'refunded' : 'rejected', resolvedAt: new Date(), decidedBy: typeof by === 'string' ? by : 'seller', ...(reply && (by === 'admin' ? { adminNote: reply } : { reply })) })
       .where(and(eq(disputes.id, id), who))
       .returning()
     if (!d) return fail('unknown_dispute')

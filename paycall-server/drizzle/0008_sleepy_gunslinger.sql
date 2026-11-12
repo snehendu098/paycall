@@ -1,0 +1,1 @@
+ALTER TABLE "disputes" ADD COLUMN "admin_note" text;

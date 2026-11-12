@@ -17,7 +17,8 @@ export const disputes = pgTable('disputes', {
   status: text().$type<'open' | 'escalated' | 'refunded' | 'rejected'>().notNull().default('open'),
   createdAt: createdAt(),
   resolvedAt: timestamp({ withTimezone: true }),
-  reply: text(), // seller's reason on reject, or admin note
+  reply: text(), // seller's reason on reject
+  adminNote: text(), // PayCall's note on an escalated decision
   decidedBy: text().$type<'seller' | 'admin' | 'timeout'>(),
   escalatedAt: timestamp({ withTimezone: true }),
 })

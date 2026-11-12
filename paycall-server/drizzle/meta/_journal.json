@@ -57,6 +57,13 @@
       "when": 1794496289898,
       "tag": "0007_equal_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794498534168,
+      "tag": "0008_sleepy_gunslinger",
+      "breakpoints": true
     }
   ]
 }

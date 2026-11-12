@@ -301,7 +301,8 @@ export function Disputes({ role, list, onChanged }: { role: Role; list?: Dispute
                   <span className="min-w-0 truncate" title={d.reason}>{d.reason}</span>
                   <span className="shrink-0 font-mono">{$(d.amount)}</span>
                 </div>
-                {d.reply && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={d.reply}>{d.decidedBy === 'admin' ? 'PayCall' : 'Seller'}: “{d.reply}”</div>}
+                {d.reply && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={d.reply}>Seller: “{d.reply}”</div>}
+                {d.adminNote && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={d.adminNote}>PayCall: “{d.adminNote}”</div>}
                 <div className="mt-0.5 truncate text-xs text-muted-foreground" suppressHydrationWarning>
                   <span className={hot ? 'text-live' : undefined}>{text}</span>
                   {d.resource && <> · <span className="font-mono" title={d.resource}>{d.resource}</span></>} · {ago(d.createdAt)}

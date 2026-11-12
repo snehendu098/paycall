@@ -112,7 +112,7 @@ test('disputes: seller silence auto-refunds; reject → escalate once → admin 
   expect(await escalateDispute(db, 'own_1', d2.dispute.id)).toMatchObject({ ok: true, dispute: { status: 'escalated' } })
   expect(await escalateDispute(db, 'own_1', d2.dispute.id)).toMatchObject({ ok: false }) // once
   expect(await decideDispute(db, d2.dispute.id, { seller: 'sel_1' }, 'reject', 'again')).toMatchObject({ ok: false }) // out of seller hands
-  expect(await decideDispute(db, d2.dispute.id, 'admin', 'refund', 'upstream returned stale data')).toMatchObject({ ok: true, dispute: { decidedBy: 'admin' } })
+  expect(await decideDispute(db, d2.dispute.id, 'admin', 'refund', 'upstream returned stale data')).toMatchObject({ ok: true, dispute: { decidedBy: 'admin', reply: 'data was correct', adminNote: 'upstream returned stale data' } })
   expect(await held()).toBe(0)
   expect(await balance()).toBe(25_000)
 
