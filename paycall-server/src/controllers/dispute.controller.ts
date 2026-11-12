@@ -1,8 +1,8 @@
 import { zValidator } from '@hono/zod-validator'
-import { desc, eq, type SQL } from 'drizzle-orm'
+import { desc, eq, sql, type SQL } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
-import { disputes, entries } from '../db/schema'
+import { agents, disputes, endpoints, entries, owners, sellers } from '../db/schema'
 import { factory } from '../lib/factory'
 import { closeDispute, decideDispute, escalateDispute, openDispute, refund } from '../ledger'
 import { zMicros } from '../lib/util'
@@ -56,8 +56,35 @@ export const resolve = factory.createHandlers(zValidator('json', Decide), async 
 export const close = factory.createHandlers(async (c) => c.json(out(await closeDispute(c.var.db, c.var.principal.id, id(c))).dispute))
 export const escalate = factory.createHandlers(async (c) => c.json(out(await escalateDispute(c.var.db, c.var.principal.id, id(c))).dispute))
 
+// admin view: + parties, listing, charge detail
+const adminRows = (db: Parameters<typeof decideDispute>[0], where: SQL) =>
+  db
+    .select({
+      dispute: disputes,
+      x: {
+        resource: entries.resource, chargedAt: entries.createdAt, charged: entries.amount, units: entries.units, unit: entries.unit, agentPubkey: entries.agentPubkey,
+        ownerEmail: owners.email, agentName: agents.name, seller: sellers.name, sellerPaypal: sellers.paypalEmail,
+        endpointId: endpoints.id, endpoint: endpoints.name, pricing: endpoints.pricing, price: endpoints.price, maxAmount: endpoints.maxAmount, passSeconds: endpoints.passSeconds,
+      },
+    })
+    .from(disputes)
+    .innerJoin(entries, eq(entries.id, disputes.entryId))
+    .innerJoin(owners, eq(owners.id, disputes.ownerId))
+    .innerJoin(sellers, eq(sellers.id, disputes.sellerId))
+    .leftJoin(agents, eq(agents.pubkey, entries.agentPubkey))
+    .leftJoin(endpoints, eq(endpoints.id, sql`substring(${entries.resource} from '/p/([^/?#]+)')`))
+    .where(where)
+    .orderBy(desc(disputes.id))
+    .limit(100)
+    .then((r) => r.map((x) => ({ ...x.dispute, ...x.x })))
+
 // admin (PayCall) queue + final call
-export const escalated = factory.createHandlers(async (c) => c.json(await rows(c.var.db, eq(disputes.status, 'escalated'))))
+export const escalated = factory.createHandlers(async (c) => c.json(await adminRows(c.var.db, eq(disputes.status, 'escalated'))))
+export const adminGet = factory.createHandlers(async (c) => {
+  const [d] = await adminRows(c.var.db, eq(disputes.id, id(c)))
+  if (!d) throw new HTTPException(404, { message: 'unknown_dispute' })
+  return c.json(d)
+})
 export const adminDecide = factory.createHandlers(zValidator('json', z.object({ action: z.enum(['refund', 'reject']), reply: z.string().trim().max(500).optional() })), async (c) => {
   const { action, reply } = c.req.valid('json')
   return c.json(out(await decideDispute(c.var.db, id(c), 'admin', action, reply)).dispute)
