@@ -1,6 +1,6 @@
 // one-off: verified Channel3 listing on prod. idempotent.
 // C3_KEY=... bun --env-file=.env --env-file=.dev.vars scripts/seed-channel3.ts
-// db insert for seller only; endpoint goes through the api so the worker seals the key with its own secret
+// db insert for seller only; endpoint via api so worker seals key with own secret
 import pg from 'pg'
 
 const API = process.env.API ?? 'https://api.paycall.live'

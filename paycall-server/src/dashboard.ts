@@ -74,7 +74,7 @@ export const dashboard = (app: App) =>
     })
     .on(['GET', 'POST'], '/auth/*', (c) => c.var.auth.handler(c.req.raw))
 
-    // first visit to a portal: create owner/seller, link to user. api key discarded, session acts as user
+    // first portal visit: create owner/seller, link to user. api key discarded, session acts as user
     .post('/pc/enable', async (c) => {
       const s = await c.var.auth.api.getSession({ headers: c.req.raw.headers })
       if (!s) return c.json({ error: 'unauthorized' }, 401)

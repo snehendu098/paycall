@@ -42,7 +42,7 @@ export const list = factory.createHandlers(async (c) => {
   return c.json(await rows(c.var.db, eq(role === 'owner' ? disputes.ownerId : disputes.sellerId, me)))
 })
 
-// reject needs a reason the buyer sees (and PayCall, if escalated)
+// reject needs reason buyer sees (+ PayCall if escalated)
 const Decide = z.discriminatedUnion('action', [
   z.object({ action: z.literal('refund'), reply: z.string().trim().max(500).optional() }),
   z.object({ action: z.literal('reject'), reply: z.string().trim().min(3).max(500) }),

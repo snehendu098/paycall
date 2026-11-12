@@ -91,7 +91,7 @@ test('disputes: open holds, reject releases, refund pays back; window + dup guar
 test('disputes: seller silence auto-refunds; reject → escalate once → admin final', async () => {
   const held = async () => (await db.select({ h: heldOf('sel_1') }).from(sellers))[0]!.h
   type D = { ok: true; dispute: { id: number } }
-  // seller ignores it for 3 days → cron refunds
+  // seller silent 3 days → cron refunds
   const c1 = (await pay(1, PRICE)) as { entryId: number }
   const d1 = (await openDispute(db, 'own_1', c1.entryId, 'empty body')) as D
   await expireDisputes(db)

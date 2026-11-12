@@ -123,7 +123,7 @@ export async function pollPayouts(env: Env, db: DB) {
 // cron + /admin/settle-now: own conn, refresh statuses then pay
 export const settleAll = (env: CloudflareBindings) =>
   withDb(env.HYPERDRIVE.connectionString, async (db) => {
-    await db.delete(agentNonces).where(sql`${agentNonces.createdAt} < now() - interval '10 minutes'`) // past the 5 min header window, can't verify anyway
+    await db.delete(agentNonces).where(sql`${agentNonces.createdAt} < now() - interval '10 minutes'`) // past 5 min header window, unverifiable anyway
     await expireDisputes(db) // before payouts: auto-refunds come out of what's owed
     await pollPayouts(env, db)
     return runSettlement(env, db)

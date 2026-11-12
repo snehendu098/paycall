@@ -1,4 +1,4 @@
-// refunds + disputes. one primitive: refund entry = money back to buyer, out of seller earnings.
+// refunds + disputes. one primitive: refund entry = money back to buyer, out of seller earnings
 // voucher/channel math never changes; payouts subtract refunds and open disputes (payouts.ts owed)
 import { and, eq, gt, gte, inArray, isNull, lt, sql, type AnyColumn } from 'drizzle-orm'
 import type { DB } from './db'
@@ -63,7 +63,7 @@ export async function refundIn(tx: Tx, chargeId: number, sellerId: string, amoun
 export const refund = (db: DB, chargeId: number, sellerId: string, amount: number | 'rest', tag: string) =>
   db.transaction((tx) => refundIn(tx, chargeId, sellerId, amount, tag))
 
-// buyer contests a charge within the window
+// buyer contests charge within window
 export async function openDispute(db: DB, ownerId: string, chargeId: number, reason: string) {
   return db.transaction(async (tx) => {
     const [charge] = await tx
@@ -105,14 +105,14 @@ export async function decideDispute(db: DB, id: number, by: By, action: 'refund'
     if (!d) return fail('unknown_dispute')
     if (action === 'refund') {
       const r = await refundIn(tx, d.entryId, d.sellerId, 'rest', `dispute:${d.id}`)
-      // already fully refunded since opening → nothing left to give back, still resolved
+      // fully refunded since opening → nothing left, still resolved
       if (!r.ok && r.reason !== 'already_refunded') throw new Error(r.reason)
     }
     return { ok: true as const, dispute: d }
   })
 }
 
-// buyer appeals a seller reject once → PayCall admin decides
+// buyer appeals seller reject once → PayCall admin decides
 export async function escalateDispute(db: DB, ownerId: string, id: number) {
   const [d] = await db
     .update(disputes)
@@ -122,7 +122,7 @@ export async function escalateDispute(db: DB, ownerId: string, id: number) {
   return d ? { ok: true as const, dispute: d } : fail('not_escalatable')
 }
 
-// buyer drops it (open) or accepts the seller's reject: no refund, no escalation, hold released
+// buyer drops (open) or accepts seller reject: no refund, no escalation, hold released
 export async function closeDispute(db: DB, ownerId: string, id: number) {
   const [d] = await db
     .update(disputes)

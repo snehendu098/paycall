@@ -7,13 +7,13 @@ import { agents } from '../db/schema'
 import { factory } from '../lib/factory'
 import { zMicros } from '../lib/util'
 
-// hosted mcp oauth: worker validates request, dashboard (better auth session) shows consent, worker completes.
+// hosted mcp oauth: worker validates request, dashboard (better auth session) shows consent, worker completes
 export type McpProps = { ownerId: string; agentPubkey: string; privateKey: string }
 type Tx = { req: AuthRequest; clientName: string | null }
 
 const TX_TTL_S = 600
 const SCOPES = ['mcp', 'offline_access']
-// phishing guard: any site can register a client via dcr/cimd, so codes only to local apps or known mcp hosts.
+// phishing guard: any site can register client via dcr/cimd → codes only to local apps or known mcp hosts
 // loopback = claude code, codex, gemini cli, vs code. ponytail: fixed allowlist, add hosts as clients appear
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 const HOSTS = /(^|\.)(claude\.ai|claude\.com|chatgpt\.com|vscode\.dev)$/
