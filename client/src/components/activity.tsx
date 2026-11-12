@@ -37,7 +37,7 @@ export function useLedger(role: Role, onEvent?: (e: Entry) => void) {
         const e = JSON.parse((ev as MessageEvent).data) as Entry
         setFresh((f) => new Set(f).add(String(e.id)))
         setRows(merge([e]))
-        // sse rows are raw; refetch so the parent charge's refunded/dispute are current
+        // sse rows raw; refetch so parent charge refunded/dispute current
         if (e.type === 'refund') refresh()
         fire(e)
       })
@@ -60,7 +60,7 @@ const label: Record<Role, Record<Entry['type'], string>> = {
   buyer: { topup: 'PayPal top-up', reload: 'Auto-reload', charge: 'Paid call', refund: 'Refund', payout: 'Payout', fee: 'Fee' },
   seller: { topup: 'Top-up', reload: 'Reload', charge: 'Paid call', refund: 'Refund', payout: 'Payout to PayPal', fee: 'Payout fee · 2%' },
 }
-// metered calls settle the max then refund the rest (ref rf:<charge>:unused); fold those into the charge
+// metered: settle max, refund rest (ref rf:<charge>:unused); fold into charge
 const isUnused = (e: Entry) => e.type === 'refund' && !!e.ref?.endsWith(':unused')
 const PAGE = 12
 const WINDOW = 7 * 86_400_000 // server DISPUTE_WINDOW_DAYS
@@ -75,7 +75,7 @@ const WHY: Record<string, string> = {
 }
 const why = (e: unknown) => WHY[errMsg(e)] ?? errMsg(e)
 const quiet = 'text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground'
-// sign from the viewer's side
+// sign from viewer's side
 const sign = (role: Role, t: Entry['type']) => (role === 'buyer' ? (t === 'charge' ? -1 : 1) : t === 'charge' ? 1 : -1)
 
 /** Live ledger list. `names` maps agent pubkey → name. Seller can refund charges, buyer can dispute them. */
@@ -115,7 +115,7 @@ export function Activity({ role, rows, fresh, names, onChanged }: { role: Role; 
           const isNew = fresh.has(String(e.id))
           const who = e.agentPubkey ? (names?.[e.agentPubkey] ?? short(e.agentPubkey)) : null
           const fold = unused.get(String(e.id)) ?? 0
-          const back = (e.refunded ?? 0) - fold // refunded beyond the metered unused part
+          const back = (e.refunded ?? 0) - fold // refunded beyond metered unused part
           const left = e.amount - (e.refunded ?? 0)
           const can = e.type === 'charge' && left > 0 && (role === 'seller' || (!e.dispute && now - +new Date(e.createdAt) < WINDOW))
           const d = day(e.createdAt)
@@ -250,7 +250,7 @@ const live = (d: Dispute) => d.status === 'open' || d.status === 'escalated'
 const canEscalate = (d: Dispute) => d.status === 'rejected' && d.decidedBy === 'seller' && !!d.resolvedAt && Date.now() - +new Date(d.resolvedAt) < ESCALATE
 
 type Stage = { label: string; tone: 'live' | 'muted' | 'default'; hint?: string }
-// where it stands + what's next, short, from the viewer's side
+// status + next step, viewer's side
 function stage(d: Dispute, role: Role): Stage {
   if (d.status === 'open') {
     const n = daysLeft(d.createdAt, RESPOND)
@@ -265,11 +265,11 @@ function stage(d: Dispute, role: Role): Stage {
   return { label: 'Rejected', tone: 'default', hint: role === 'seller' ? `buyer can escalate for ${n}d` : `escalate within ${n}d` }
 }
 const toneText = { live: 'text-live', default: 'text-foreground', muted: 'text-muted-foreground' } as const
-// listing name for a dispute: from the ledger row, else the url path
+// dispute listing name: ledger row, else url path
 const titleOf = (d: Dispute, charges?: Entry[]) =>
   charges?.find((e) => Number(e.id) === d.entryId)?.endpoint ?? (d.resource ? new URL(d.resource, 'https://x').pathname.split('/').filter(Boolean).slice(2).join('/') || 'Charge' : 'Charge')
 
-/** Disputes, actionable first. Seller refunds or rejects (with reason); buyer can escalate a reject to PayCall once. Hidden when none. */
+/** Disputes, actionable first. Seller refunds/rejects w/ reason; buyer escalates reject to PayCall once. Hidden when none. */
 export function Disputes({ role, list, charges, onChanged }: { role: Role; list?: Dispute[]; charges?: Entry[]; onChanged: () => void }) {
   const [busy, setBusy] = useState<number>()
   const [rejecting, setRejecting] = useState<Dispute>()

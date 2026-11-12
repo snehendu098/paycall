@@ -54,7 +54,7 @@ const feed: Feed[] = [
   { amt: '$0.01', what: 'Weather API', who: 'research-agent', from: 8, to: 0, usd: 0.01 },
 ]
 const EVERY = 1800
-const FLY = 1100 // ms for the dot to travel an arc
+const FLY = 1100 // dot travel ms per arc
 const LIFE = 2400
 
 // cobe shader math: world m = Lᵀ·view, globe radius 0.8 of half-size
@@ -139,7 +139,7 @@ export function NetworkGlobe() {
       if (age > LIFE) continue
       const pts = arcs[l.i]!.map(px), N = pts.length - 1
       const fade = Math.min(1, age / 200) * Math.min(1, (LIFE - age) / 500)
-      // dotted route + travelling dot only (no solid tail over the dots)
+      // dotted route + travelling dot only, no solid tail
       const head = Math.min(1, age / FLY), h = Math.round(head * N)
       ctx.setLineDash([4, 6]); ctx.lineWidth = 2; ctx.strokeStyle = `rgb(143 176 245 / ${0.6 * fade})`
       path(pts, 0, N)

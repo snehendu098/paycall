@@ -37,7 +37,7 @@ export default function Authorize({ searchParams }: { searchParams: Promise<{ tx
     setBusy(kind)
     try {
       const r = await pc<{ redirectTo: string }>('buyer', `oauth/tx/${id}/${kind === 'approve' ? 'complete' : 'deny'}`, { method: 'POST', body })
-      window.location.href = r.redirectTo // busy stays on; we're leaving
+      window.location.href = r.redirectTo // busy stays on; navigating away
     } catch (e) {
       setErr(/404|expired/i.test(errMsg(e)) ? EXPIRED : errMsg(e))
       setBusy(undefined)

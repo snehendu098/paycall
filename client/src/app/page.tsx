@@ -53,7 +53,7 @@ function Split({ text, visual, points, flip }: { text: ReactNode; visual: ReactN
       {/* text 5fr / visual 7fr, shared vertical padding, centred to each other */}
       <div className={`grid ${flip ? 'lg:grid-cols-[7fr_5fr]' : 'lg:grid-cols-[5fr_7fr]'}`}>
         <div className={`flex flex-col justify-center ${pad} pb-12 pt-20 md:pb-16 md:pt-32 lg:py-32 ${flip ? 'lg:order-2' : ''}`}>{text}</div>
-        {/* visual fills whole cell edge to edge, no inner frame */}
+        {/* visual fills cell edge to edge, no inner frame */}
         <div
           className={`relative aspect-[16/10] overflow-hidden border-t border-border lg:aspect-auto lg:border-t-0 ${flip ? 'lg:order-1 lg:border-r' : 'lg:border-l'}`}
         >
@@ -245,7 +245,7 @@ export default function Home() {
 
       <Rule />
 
-      {/* closing CTA: snow fills whole section, edge to edge */}
+      {/* closing CTA: snow fills section edge to edge */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0">
           <PixelSnow color="#ffffff" variant="snowflake" density={0.5} speed={1} wind={0.25} flakeSize={1} pixelSize={3} glow={0.8} mouseInteraction />
