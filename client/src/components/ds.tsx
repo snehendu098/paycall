@@ -69,7 +69,7 @@ export function Nav({ left, right }: { left?: ReactNode; right?: ReactNode }) {
         <nav className="flex items-center justify-end gap-5 text-sm md:gap-7">
           {right ?? (
             <>
-              <a href="#" className={link}>Docs</a>
+              <Link href="/docs" className={link}>Docs</Link>
               <a href="#sellers" className={link}>Sellers</a>
               <Btn href="/login" variant="outline" size="sm">Launch app</Btn>
             </>
