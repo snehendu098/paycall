@@ -54,10 +54,12 @@ test('admin bff: non-admin 403, admin lists queue + decides escalated dispute', 
   expect((await call(boss, '/api/pc/admin/owners/me')).status).toBe(404) // not allowlisted
   const q = (await (await call(boss, '/api/pc/admin/disputes')).json()) as { id: number; resource: string }[]
   expect(q).toMatchObject([{ id: d!.id, resource: '/p/ep_1/v1?q=1', endpoint: 'forecast', ownerEmail: 'o@x.io' }])
+  // dashboard accounts: real login email, not synthetic owners.email
+  await db.execute(sql`update "user" set "ownerId" = 'own_1', "sellerId" = 'sel_1' where email = 'nobody@x.io'`)
   const one = await call(boss, `/api/pc/admin/disputes/${d!.id}`)
   expect(one.status).toBe(200)
   expect(await one.json()).toMatchObject({
-    id: d!.id, status: 'escalated', reason: 'bad data', reply: 'was fine', ownerEmail: 'o@x.io', agentName: 'bot', agentPubkey: 'pk_bot',
+    id: d!.id, status: 'escalated', reason: 'bad data', reply: 'was fine', ownerEmail: 'nobody@x.io', sellerEmail: 'nobody@x.io', agentName: 'bot', agentPubkey: 'pk_bot',
     seller: 'DataMart', sellerPaypal: 's@x.io', sellerId: 'sel_1', endpointId: 'ep_1', endpoint: 'forecast', pricing: 'token', price: 100, maxAmount: 50_000, charged: 10_000, units: 100, unit: 'token',
   })
   expect((await call(boss, '/api/pc/admin/disputes/999999')).status).toBe(404)

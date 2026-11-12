@@ -63,7 +63,10 @@ const adminRows = (db: Parameters<typeof decideDispute>[0], where: SQL) =>
       dispute: disputes,
       x: {
         resource: entries.resource, chargedAt: entries.createdAt, charged: entries.amount, units: entries.units, unit: entries.unit, agentPubkey: entries.agentPubkey,
-        ownerEmail: owners.email, agentName: agents.name, seller: sellers.name, sellerPaypal: sellers.paypalEmail,
+        // real login email (better-auth "user"); api-only accounts fall back to owners.email
+        ownerEmail: sql<string>`coalesce((select email from "user" where "ownerId" = ${disputes.ownerId} limit 1), ${owners.email})`,
+        sellerEmail: sql<string | null>`(select email from "user" where "sellerId" = ${disputes.sellerId} limit 1)`,
+        agentName: agents.name, seller: sellers.name, sellerPaypal: sellers.paypalEmail,
         endpointId: endpoints.id, endpoint: endpoints.name, pricing: endpoints.pricing, price: endpoints.price, maxAmount: endpoints.maxAmount, passSeconds: endpoints.passSeconds,
       },
     })

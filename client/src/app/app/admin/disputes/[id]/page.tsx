@@ -68,6 +68,7 @@ export default function AdminDisputePage() {
         <Block title="Seller">
           <Rows rows={[
             ['Name', d.seller],
+            ['Email', d.sellerEmail ?? '—'],
             ['PayPal', d.sellerPaypal],
             ['Seller id', <span key="s" className="font-mono">{d.sellerId}</span>],
           ]} />
