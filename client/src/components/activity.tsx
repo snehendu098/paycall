@@ -72,6 +72,7 @@ const WHY: Record<string, string> = {
   already_disputed: 'Already disputed',
   dispute_window_closed: 'Disputes close 7 days after the charge',
   unknown_dispute: 'Already resolved',
+  not_escalatable: 'Can only escalate a seller rejection, once, within 3 days',
 }
 const why = (e: unknown) => WHY[errMsg(e)] ?? errMsg(e)
 const quiet = 'text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground'
@@ -224,7 +225,7 @@ function DisputeForm({ e, onDone }: { e: Entry; onDone: () => void }) {
     setBusy(true)
     try {
       await pc('buyer', `entries/${e.id}/dispute`, { method: 'POST', body: { reason } })
-      toast.success('Dispute opened', { description: 'The seller can refund or reject it.' })
+      toast.success('Dispute opened', { description: 'The seller has 3 days to refund or reject it. No answer means an automatic refund.' })
       onDone()
     } catch (x) {
       setErr(why(x))
@@ -234,7 +235,7 @@ function DisputeForm({ e, onDone }: { e: Entry; onDone: () => void }) {
   }
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-      <Field label="Reason" id="dp-reason" error={err} hint="The seller sees this. The amount is held from their payout until they decide.">
+      <Field label="Reason" id="dp-reason" error={err} hint="The seller sees this. The amount is held from their payout until it's decided. If they reject it, you can escalate to PayCall.">
         <textarea id="dp-reason" name="reason" autoFocus minLength={3} maxLength={500} rows={3} placeholder="Response was empty" aria-invalid={!!err} className="w-full resize-y border border-input bg-card px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:border-foreground/30 focus-visible:border-foreground" />
       </Field>
       <div className="flex justify-end"><Act primary type="submit" disabled={busy}>{busy ? 'Opening…' : 'Open dispute'}</Act></div>
@@ -242,52 +243,91 @@ function DisputeForm({ e, onDone }: { e: Entry; onDone: () => void }) {
   )
 }
 
-const dtone = { open: 'text-live', refunded: 'text-muted-foreground', rejected: 'text-muted-foreground' } as const
+const DAY = 86_400_000
+const RESPOND = 3 * DAY // server RESPOND_DAYS
+const ESCALATE = 3 * DAY // server ESCALATE_DAYS
+const daysLeft = (from: string, span: number) => Math.max(1, Math.ceil((+new Date(from) + span - Date.now()) / DAY))
+const live = (d: Dispute) => d.status === 'open' || d.status === 'escalated'
+const canEscalate = (d: Dispute) => d.status === 'rejected' && d.decidedBy === 'seller' && !!d.resolvedAt && Date.now() - +new Date(d.resolvedAt) < ESCALATE
 
-/** Disputes, open first; seller resolves. Hidden when none. */
+// where it stands, from the viewer's side
+function stage(d: Dispute, role: Role): [string, boolean] {
+  if (d.status === 'open') return [role === 'seller' ? `needs your answer · auto-refund in ${daysLeft(d.createdAt, RESPOND)}d` : `waiting on seller · auto-refund in ${daysLeft(d.createdAt, RESPOND)}d`, true]
+  if (d.status === 'escalated') return ['PayCall reviewing', true]
+  if (d.status === 'refunded') return [d.decidedBy === 'timeout' ? "refunded · seller didn't answer" : d.decidedBy === 'admin' ? 'refunded by PayCall' : 'refunded', false]
+  if (d.decidedBy === 'admin') return ['rejected by PayCall · final', false]
+  if (!canEscalate(d)) return [role === 'seller' ? 'rejected by you' : 'rejected by seller', false]
+  const n = daysLeft(d.resolvedAt!, ESCALATE)
+  return role === 'seller' ? [`rejected by you · buyer can escalate for ${n}d`, false] : [`rejected by seller · escalate within ${n}d`, true]
+}
+
+/** Disputes, actionable first. Seller refunds or rejects (with reason); buyer can escalate a reject to PayCall once. Hidden when none. */
 export function Disputes({ role, list, onChanged }: { role: Role; list?: Dispute[]; onChanged: () => void }) {
   const [busy, setBusy] = useState<number>()
+  const [rejecting, setRejecting] = useState<Dispute>()
   if (!list?.length) return null
-  const sorted = [...list].sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open') || b.id - a.id)
-  const open = list.filter((d) => d.status === 'open').length
+  const rank = (d: Dispute) => (role === 'seller' ? d.status === 'open' : canEscalate(d)) ? 2 : live(d) ? 1 : 0 // your move first
+  const sorted = [...list].sort((a, b) => rank(b) - rank(a) || b.id - a.id)
+  const held = list.some((d) => live(d) || canEscalate(d))
 
-  async function resolve(d: Dispute, action: 'refund' | 'reject') {
+  async function act(d: Dispute, path: string, body: object | undefined, ok: string) {
     setBusy(d.id)
     try {
-      await pc('seller', `disputes/${d.id}`, { method: 'POST', body: { action } })
-      toast.success(action === 'refund' ? `Refunded ${$(d.amount)}` : 'Dispute rejected')
+      await pc(role, `disputes/${path}`, { method: 'POST', body })
+      toast.success(ok)
+      setRejecting(undefined)
     } catch (e) {
-      toast.error("Couldn't resolve dispute", { description: why(e) })
+      toast.error("Couldn't update dispute", { description: why(e) })
     } finally {
       setBusy(undefined)
       onChanged()
     }
   }
+  function reject(ev: FormEvent<HTMLFormElement>) {
+    ev.preventDefault()
+    const reply = String(new FormData(ev.currentTarget).get('reply')).trim()
+    if (rejecting && reply.length >= 3) act(rejecting, String(rejecting.id), { action: 'reject', reply }, 'Dispute rejected')
+  }
 
   return (
-    <Block title="Disputes" aside={role === 'seller' && open > 0 && <span className="text-xs text-muted-foreground">Held from payouts while open</span>}>
+    <Block title="Disputes" aside={role === 'seller' && held && <span className="text-xs text-muted-foreground">Held from payouts until decided</span>}>
       <ul className="max-h-[420px] overflow-y-auto border-t border-border" data-testid="disputes">
-        {sorted.map((d) => (
-          <li key={d.id} className="flex flex-col gap-3 border-b border-border py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="min-w-0 truncate" title={d.reason}>{d.reason}</span>
-                <span className="shrink-0 font-mono">{$(d.amount)}</span>
+        {sorted.map((d) => {
+          const [text, hot] = stage(d, role)
+          return (
+            <li key={d.id} className="flex flex-col gap-3 border-b border-border py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate" title={d.reason}>{d.reason}</span>
+                  <span className="shrink-0 font-mono">{$(d.amount)}</span>
+                </div>
+                {d.reply && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={d.reply}>{d.decidedBy === 'admin' ? 'PayCall' : 'Seller'}: “{d.reply}”</div>}
+                <div className="mt-0.5 truncate text-xs text-muted-foreground" suppressHydrationWarning>
+                  <span className={hot ? 'text-live' : undefined}>{text}</span>
+                  {d.resource && <> · <span className="font-mono" title={d.resource}>{d.resource}</span></>} · {ago(d.createdAt)}
+                </div>
               </div>
-              <div className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                <span className={dtone[d.status]}>{d.status}</span>
-                {d.resource && <> · <span className="font-mono" title={d.resource}>{d.resource}</span></>} · {ago(d.createdAt)}
-              </div>
-            </div>
-            {role === 'seller' && d.status === 'open' && (
-              <div className="grid grid-cols-2 gap-2 sm:flex">
-                <Act disabled={busy === d.id} onClick={() => resolve(d, 'reject')}>Reject</Act>
-                <Act primary disabled={busy === d.id} onClick={() => resolve(d, 'refund')}>Refund</Act>
-              </div>
-            )}
-          </li>
-        ))}
+              {role === 'seller' && d.status === 'open' && (
+                <div className="grid grid-cols-2 gap-2 sm:flex">
+                  <Act disabled={busy === d.id} onClick={() => setRejecting(d)}>Reject</Act>
+                  <Act primary disabled={busy === d.id} onClick={() => act(d, String(d.id), { action: 'refund' }, `Refunded ${$(d.amount)}`)}>Refund</Act>
+                </div>
+              )}
+              {role === 'buyer' && canEscalate(d) && (
+                <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review')}>Escalate to PayCall</Act>
+              )}
+            </li>
+          )
+        })}
       </ul>
+      <PDialog open={!!rejecting} onOpenChange={(o) => !o && setRejecting(undefined)} title="Reject dispute" description="The buyer sees your reason and can escalate to PayCall once. The amount stays held until then.">
+        <form onSubmit={reject} className="flex flex-col gap-5">
+          <Field label="Reason" id="dp-reply" hint={rejecting ? `Buyer said: “${rejecting.reason}”` : undefined}>
+            <textarea id="dp-reply" name="reply" autoFocus required minLength={3} maxLength={500} rows={3} placeholder="The response matched the docs" className="w-full resize-y border border-input bg-card px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:border-foreground/30 focus-visible:border-foreground" />
+          </Field>
+          <div className="flex justify-end"><Act primary type="submit" disabled={busy === rejecting?.id}>{busy === rejecting?.id ? 'Rejecting…' : 'Reject'}</Act></div>
+        </form>
+      </PDialog>
     </Block>
   )
 }

@@ -34,11 +34,11 @@ export type Entry = {
   endpoint?: string | null // listing name, from resource
   seller?: string | null
   refunded?: number // charge: refunded so far (absent on live sse rows)
-  dispute?: 'open' | 'refunded' | 'rejected' | null
+  dispute?: 'open' | 'escalated' | 'refunded' | 'rejected' | null
   createdAt: string
 }
 
-export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: string; amount: number; reason: string; status: 'open' | 'refunded' | 'rejected'; createdAt: string; resolvedAt: string | null; resource: string | null; chargedAt: string }
+export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: string; amount: number; reason: string; status: 'open' | 'escalated' | 'refunded' | 'rejected'; createdAt: string; resolvedAt: string | null; reply: string | null; decidedBy: 'seller' | 'admin' | 'timeout' | null; escalatedAt: string | null; resource: string | null; chargedAt: string }
 
 export type Pricing = { pricing: 'call' | 'token' | 'char' | 'pass'; price: number; maxAmount: number | null; passSeconds: number | null }
 // 3600 → 1h, 604800 → 7d (86400 stays 24h)
