@@ -19,6 +19,6 @@ export const disputes = pgTable('disputes', {
   resolvedAt: timestamp({ withTimezone: true }),
   reply: text(), // seller's reason on reject
   adminNote: text(), // PayCall's note on an escalated decision
-  decidedBy: text().$type<'seller' | 'admin' | 'timeout'>(),
+  decidedBy: text().$type<'seller' | 'admin' | 'timeout' | 'buyer'>(), // buyer = marked resolved, no refund
   escalatedAt: timestamp({ withTimezone: true }),
 })

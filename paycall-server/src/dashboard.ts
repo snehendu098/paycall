@@ -51,7 +51,7 @@ export function makeAuth(env: CloudflareBindings) {
 const ALLOW: Record<string, RegExp> = {
   buyer: /^(owners\/me|agents|approvals|disputes|topup|entries|events|device|oauth)(\/|$)/,
   seller: /^(sellers\/me|endpoints|entries|disputes|events)(\/|$)/,
-  admin: /^(disputes|endpoints|stats|settle-now)(\/|$)/, // → /admin/*
+  admin: /^(disputes|endpoints|stats)(\/|$)/, // → /admin/*. settle-now stays bearer-only
 }
 // admin = verified session email listed in ADMIN_EMAILS (exact, case-insensitive)
 const isAdmin = (env: CloudflareBindings, u: { email: string; emailVerified: boolean }) =>

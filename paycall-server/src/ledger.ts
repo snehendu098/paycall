@@ -122,6 +122,16 @@ export async function escalateDispute(db: DB, ownerId: string, id: number) {
   return d ? { ok: true as const, dispute: d } : fail('not_escalatable')
 }
 
+// buyer drops it (open) or accepts the seller's reject: no refund, no escalation, hold released
+export async function closeDispute(db: DB, ownerId: string, id: number) {
+  const [d] = await db
+    .update(disputes)
+    .set({ status: 'rejected', decidedBy: 'buyer', resolvedAt: new Date() })
+    .where(and(eq(disputes.id, id), eq(disputes.ownerId, ownerId), sql`(${disputes.status} = 'open' or (${disputes.status} = 'rejected' and ${disputes.decidedBy} = 'seller'))`))
+    .returning()
+  return d ? { ok: true as const, dispute: d } : fail('unknown_dispute')
+}
+
 // cron: seller silence = buyer wins
 export async function expireDisputes(db: DB) {
   const late = await db.select({ id: disputes.id }).from(disputes).where(and(eq(disputes.status, 'open'), lt(disputes.createdAt, ago(RESPOND_DAYS))))

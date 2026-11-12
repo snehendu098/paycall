@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import { disputes, entries } from '../db/schema'
 import { factory } from '../lib/factory'
-import { decideDispute, escalateDispute, openDispute, refund } from '../ledger'
+import { closeDispute, decideDispute, escalateDispute, openDispute, refund } from '../ledger'
 import { zMicros } from '../lib/util'
 
 const id = (c: { req: { param: (k: string) => string | undefined } }) => {
@@ -53,6 +53,7 @@ export const resolve = factory.createHandlers(zValidator('json', Decide), async 
   return c.json(out(await decideDispute(c.var.db, id(c), { seller: c.var.principal.id }, action, reply)).dispute)
 })
 
+export const close = factory.createHandlers(async (c) => c.json(out(await closeDispute(c.var.db, c.var.principal.id, id(c))).dispute))
 export const escalate = factory.createHandlers(async (c) => c.json(out(await escalateDispute(c.var.db, c.var.principal.id, id(c))).dispute))
 
 // admin (PayCall) queue + final call

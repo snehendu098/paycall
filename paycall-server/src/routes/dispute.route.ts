@@ -3,4 +3,4 @@ import * as d from '../controllers/dispute.controller'
 import { auth } from '../lib/auth'
 import type { AppEnv } from '../types'
 
-export const disputeRoute = new Hono<AppEnv>().get('/', auth('owner', 'seller'), ...d.list).post('/:id', auth('seller'), ...d.resolve).post('/:id/escalate', auth('owner'), ...d.escalate)
+export const disputeRoute = new Hono<AppEnv>().get('/', auth('owner', 'seller'), ...d.list).post('/:id', auth('seller'), ...d.resolve).post('/:id/escalate', auth('owner'), ...d.escalate).post('/:id/close', auth('owner'), ...d.close)
