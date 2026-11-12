@@ -71,6 +71,13 @@
       "when": 1794504327723,
       "tag": "0009_material_malcolm_colcord",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794508042420,
+      "tag": "0010_silly_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

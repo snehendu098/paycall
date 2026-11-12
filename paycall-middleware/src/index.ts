@@ -7,7 +7,14 @@ import type { RequestHandler } from 'express'
 // price: fixed "0.01" or per request, e.g. (req) => req.url.includes('/hd') ? '0.05' : '0.01'
 // metered: price = signed cap; handler sets `x-paycall-charge: <usd>` = actual use,
 // rest refunded after settle
-export type PaycallOptions = { apiKey: string; price: string | ((req: Request) => string | Promise<string>); metered?: boolean; facilitator?: string }
+// pass: one payment buys `seconds` of free calls on `scope` (default: url pathname)
+export type PaycallOptions = {
+  apiKey: string
+  price: string | ((req: Request) => string | Promise<string>)
+  metered?: boolean
+  facilitator?: string
+  pass?: { seconds: number; scope?: string }
+}
 type Settle = (res: Response) => Promise<{ ok: true; header: string } | { ok: false; res: Response }>
 export const CHARGE_HEADER = 'x-paycall-charge'
 const micros = (usd: string) => {
@@ -18,8 +25,9 @@ const micros = (usd: string) => {
 
 const b64json = (o: unknown) => btoa(JSON.stringify(o))
 
-export function paycall({ apiKey, price, metered = false, facilitator = 'https://api.paycall.live' }: PaycallOptions) {
+export function paycall({ apiKey, price, metered = false, facilitator = 'https://api.paycall.live', pass }: PaycallOptions) {
   if (typeof price === 'string') micros(price) // fail fast on bad fixed price
+  if (pass && !(Number.isInteger(pass.seconds) && pass.seconds > 0 && pass.seconds <= 30 * 86400)) throw new Error(`paycall: bad pass seconds ${pass.seconds}`)
   facilitator = facilitator.replace(/\/$/, '')
 
   const call = (path: string, body?: string) =>
@@ -40,6 +48,13 @@ export function paycall({ apiKey, price, metered = false, facilitator = 'https:/
   return async (req: Request): Promise<Response | Settle> => {
     const url = req.url
     const sig = req.headers.get('payment-signature')
+    const scope = pass && (pass.scope ?? new URL(url).pathname)
+    const identity = req.headers.get('paycall-agent')
+    // pass holder: signed identity, no payment. sig present = already paying, skip check
+    if (pass && identity && !sig) {
+      const p = await json(await call('/passes/check', JSON.stringify({ identity, method: req.method, url, scope })))
+      if (p.valid) return async () => ({ ok: true, header: b64json({ success: true, payer: p.payer, pass: { expiresAt: p.expiresAt } }) })
+    }
     const amount = micros(typeof price === 'string' ? price : await price(req))
     const requirements = {
       scheme: 'paycall-prepaid',
@@ -48,7 +63,7 @@ export function paycall({ apiKey, price, metered = false, facilitator = 'https:/
       asset: 'USD',
       payTo: await getSellerId(),
       maxTimeoutSeconds: 60,
-      extra: { facilitator, ...(metered && { pricing: { unit: 'usage', max: String(amount) } }) },
+      extra: { facilitator, ...(metered && { pricing: { unit: 'usage', max: String(amount) } }), ...(pass && { pass: { seconds: pass.seconds } }) },
     }
     const required = (error: string) => {
       const pr = { x402Version: 2, error, resource: { url }, accepts: [requirements] }
@@ -61,7 +76,8 @@ export function paycall({ apiKey, price, metered = false, facilitator = 'https:/
     } catch {
       return required('invalid_payment_header')
     }
-    const body = JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements: requirements })
+    const paymentRequirements = pass ? { ...requirements, extra: { ...requirements.extra, pass: { seconds: pass.seconds, scope } } } : requirements
+    const body = JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements })
     // facilitator zod-validates payload shape; 400 there = malformed payload
     const v = await call('/verify', body)
     if (v.status === 400) return required('invalid_payload')
@@ -78,7 +94,7 @@ export function paycall({ apiKey, price, metered = false, facilitator = 'https:/
         // ponytail: refund fail → buyer charged cap; seller refunds from Earn later
         if (charged < amount) await call(`/entries/${r.transaction}/refund`, JSON.stringify({ amount: amount - charged })).catch(() => {})
       }
-      return { ok: true, header: b64json({ success: true, payer: r.payer, transaction: r.transaction, network: r.network, amount: String(charged) }) }
+      return { ok: true, header: b64json({ success: true, payer: r.payer, transaction: r.transaction, network: r.network, amount: String(charged), ...(r.pass && { pass: r.pass }) }) }
     }
   }
 }
