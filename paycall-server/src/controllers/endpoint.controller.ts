@@ -83,7 +83,7 @@ const body = (c: { req: { json: () => Promise<unknown> } }) => c.req.json().catc
 const modeOf = (b: unknown) => ((b as { mode?: unknown } | null)?.mode === 'hosted' ? 'hosted' : 'proxy')
 export const parseCreate = (b: unknown) => (modeOf(b) === 'hosted' ? { mode: 'hosted' as const, ...parse(Hosted, b) } : { mode: 'proxy' as const, ...parse(Proxy, b) })
 
-// GET (method, no payment, no seller headers) → must 402 with PAYMENT-REQUIRED offering paycall-prepaid to this seller
+// route method, no payment/headers → must 402 with PAYMENT-REQUIRED offering paycall-prepaid to this seller
 async function check(url: string, method: string, sellerId: string): Promise<string | undefined> {
   let res: Response
   try {
@@ -159,7 +159,7 @@ export const remove = factory.createHandlers(async (c) => {
 const own = (c: { req: { param: (k: string) => string | undefined }; var: { principal: { id: string } } }) =>
   and(eq(endpoints.id, c.req.param('id')!), eq(endpoints.sellerId, c.var.principal.id))
 
-// mode fixed at create. proxy upstreamHeaders: object = replace all, null/{} = clear, absent = keep. hosted: re-probed on every save
+// mode fixed at create. proxy upstreamHeaders: object=replace, null/{}=clear, absent=keep. hosted: re-probe each save
 export const update = factory.createHandlers(async (c) => {
   const [cur] = await c.var.db.select({ mode: endpoints.mode, upstreamUrl: endpoints.upstreamUrl, routes: endpoints.routes }).from(endpoints).where(own(c))
   if (!cur) throw new HTTPException(404, { message: 'unknown endpoint' })

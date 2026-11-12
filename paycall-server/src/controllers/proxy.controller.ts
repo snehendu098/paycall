@@ -42,7 +42,7 @@ async function upstream(c: Context<AppEnv>, ep: Endpoint, body: ArrayBuffer | un
   const rest = url.pathname.slice(url.pathname.indexOf(ep.id) + ep.id.length)
   const target = new URL(ep.upstreamUrl + rest + url.search)
   const init = { method: c.req.method, headers, body, signal: AbortSignal.timeout(30_000) }
-  // own demo upstream: in-process, a worker can't fetch its own hostname
+  // own demo upstream: in-process, worker cant fetch own host
   if (target.origin === url.origin && target.pathname.startsWith('/demo/')) return demo.fetch(new Request(target.href.replace(`${target.origin}/demo`, target.origin), init))
   return fetch(target, init)
 }
@@ -110,7 +110,7 @@ export const forward = factory.createHandlers(async (c) => {
   const idemKey = `idem:${await sha256(sig)}`
   const check = await checkPayment(db, ep.sellerId, body, c.req.url)
   if (!check.ok) {
-    // same paid request retried (response lost) → replay stored response, never re-run upstream
+    // paid retry (response lost) → replay stored response, never re-run upstream
     if (check.reason === 'stale_voucher') {
       const hit = await c.env.KV.get<{ status: number; headers: [string, string][]; body: string }>(idemKey, 'json')
       if (hit) return new Response(Uint8Array.from(atob(hit.body), (ch) => ch.charCodeAt(0)), { status: hit.status, headers: [...hit.headers, ['paycall-replay', '1']] })
@@ -149,7 +149,7 @@ export const forward = factory.createHandlers(async (c) => {
       iss: origin, sub: String(r.entryId), payer: r.payer, payTo: ep.sellerId, resource: c.req.url, amount: String(amount), units, pass: passUntil?.toISOString(), iat: Math.floor(Date.now() / 1000),
     } satisfies Receipt)
   const paid = (amount: number, extra: object = {}) => ({ success: true, payer: r.payer, transaction: String(r.entryId), network: NETWORK, amount: String(amount), ...extra })
-  // settle + refund are idempotent per voucher, so a duplicate settle must not refund twice
+  // settle+refund idempotent per voucher: dup settle must not refund twice
   // metered: record usage on the charge row, refund the unused cap
   const settleUsage = async (dbx: typeof db, units: number, charged: number) => {
     if (r.duplicate) return
@@ -181,7 +181,7 @@ export const forward = factory.createHandlers(async (c) => {
   }
 
   const passInfo = passUntil && { pass: { expiresAt: passUntil } }
-  // fixed price + streamed/unknown-size body: pass through untouched, no replay cache
+  // fixed price + stream/unknown size: pass through, no replay cache
   const len = Number(res.headers.get('content-length') ?? NaN)
   if (!metered && (stream || !(len <= IDEM_MAX)))
     return relay(res, { 'PAYMENT-RESPONSE': b64json(paid(signed, { ...passInfo, receipt: await receipt(signed) })) })
