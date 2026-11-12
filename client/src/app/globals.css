@@ -72,6 +72,16 @@
   --input: #2b2b2b;
   --ring: #e8e4dc;
   --live: #8fb0f5;
+  /* code tokens (sugar-high) */
+  --sh-keyword: #8fb0f5;
+  --sh-string: #d9c48f;
+  --sh-class: #e8a87c;
+  --sh-entity: #e8a87c;
+  --sh-property: #a9c4a0;
+  --sh-identifier: #e8e4dc;
+  --sh-jsxliterals: #e8e4dc;
+  --sh-sign: #8a857d;
+  --sh-comment: #6a665f;
   --chart-1: #e8e4dc;
   --chart-2: #8fb0f5;
   --chart-3: #9a958d;

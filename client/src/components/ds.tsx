@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { MotionConfig, motion, useMotionTemplate, useMotionValue, useMotionValueEvent, useScroll, type HTMLMotionProps } from 'motion/react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
+import { highlight } from 'sugar-high'
 import { cn } from '@/lib/utils'
 import { Badge as SBadge } from '@/components/shadcn/badge'
 import { Button } from '@/components/shadcn/button'
@@ -277,7 +278,8 @@ export function Code({ text, className }: { text: string; className?: string }) 
   const [copied, setCopied] = useState(false)
   return (
     <div className={cn('relative border border-border bg-card', className)}>
-      <pre className="overflow-x-auto p-4 pr-20 font-mono text-[13px] leading-relaxed">{text}</pre>
+      {/* highlight() escapes html */}
+      <pre className="overflow-x-auto p-4 pr-20 font-mono text-[13px] leading-relaxed"><code dangerouslySetInnerHTML={{ __html: highlight(text) }} /></pre>
       <button
         type="button"
         onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })}
