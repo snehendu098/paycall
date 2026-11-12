@@ -81,10 +81,10 @@ function Queue({ list, onChanged }: { list?: Dispute[]; onChanged: () => void })
                   <span className="shrink-0 font-mono">{$(d.amount)}</span>
                 </div>
                 {d.reply && <div className="mt-1 break-words text-xs text-muted-foreground">Seller: “{d.reply}”</div>}
-                <div className="mt-1 truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                  {d.resource && <><span className="font-mono" title={d.resource}>{d.resource}</span> · </>}
-                  charged {ago(d.chargedAt)} · opened {ago(d.createdAt)}{d.escalatedAt && <> · <span className="text-live">escalated {ago(d.escalatedAt)}</span></>}
+                <div className="mt-1 text-xs text-muted-foreground" suppressHydrationWarning>
+                  {d.escalatedAt && <><span className="text-live">escalated {ago(d.escalatedAt)}</span> · </>}opened {ago(d.createdAt)} · charged {ago(d.chargedAt)}
                 </div>
+                {d.resource && <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground" title={d.resource}>{d.resource}</div>}
               </div>
               <div className="grid grid-cols-2 gap-2 sm:flex">
                 <Act onClick={() => setDeciding({ d, action: 'reject' })}>Reject</Act>
