@@ -1,7 +1,7 @@
 // live smoke: fresh unfunded owner + agent → spawn server over stdio → expect insufficient balance
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { generateKey } from 'paycall-sdk'
+import { generateKey } from '@paycall-live/sdk'
 
 const API = process.env.PAYCALL_API ?? 'https://api.paycall.live'
 async function api(path: string, body: unknown, key?: string) {

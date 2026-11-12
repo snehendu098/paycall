@@ -1,17 +1,47 @@
 {
-  "name": "paycall-mcp",
-  "module": "src/index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "name": "@paycall-live/mcp",
+  "description": "Stdio MCP server: lets an AI agent pay for x402 (HTTP 402) APIs from your prepaid PayCall balance.",
+  "keywords": [
+    "mcp",
+    "x402",
+    "paypal",
+    "ai-agents",
+    "claude",
+    "payments"
+  ],
+  "bin": {
+    "paycall-mcp": "dist/index.js"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snehendu098/paycall.git",
+    "directory": "paycall-mcp"
+  },
+  "homepage": "https://paycall.live",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outdir dist --target node --packages external && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "5"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "paycall-sdk": "file:../paycall-sdk",
+    "@paycall-live/sdk": "file:../paycall-sdk",
     "zod": "^4.6.7"
   }
 }

@@ -1,7 +1,8 @@
+import { spawn } from 'node:child_process'
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
 import { dirname, join } from 'node:path'
-import { generateKey } from 'paycall-sdk'
+import { generateKey } from '@paycall-live/sdk'
 
 export const API = process.env.PAYCALL_API ?? 'https://api.paycall.live'
 export const KEY_FILE = process.env.PAYCALL_KEY_FILE ?? join(homedir(), '.config', 'paycall', 'agent.json')
@@ -34,7 +35,7 @@ export async function login(name = `${hostname().split('.')[0]}-agent`): Promise
   const done = (async () => {
     const until = Date.now() + d.expiresIn * 1000
     while (Date.now() < until) {
-      await Bun.sleep(d.interval * 1000)
+      await new Promise((r) => setTimeout(r, d.interval * 1000))
       const r = await fetch(`${API}/device/token`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deviceCode: d.deviceCode }) }).catch(() => null)
       if (!r) continue // network blip → keep polling
       const { status } = (await r.json().catch(() => ({}))) as { status?: string }
@@ -52,8 +53,7 @@ export async function login(name = `${hostname().split('.')[0]}-agent`): Promise
 }
 
 export const openBrowser = (url: string) => {
-  const cmd = process.platform === 'darwin' ? ['open', url] : process.platform === 'win32' ? ['cmd', '/c', 'start', '', url] : ['xdg-open', url]
-  try {
-    Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' })
-  } catch {} // headless box → user opens url by hand
+  const [cmd, ...args] = process.platform === 'darwin' ? ['open', url] : process.platform === 'win32' ? ['cmd', '/c', 'start', '', url] : ['xdg-open', url]
+  // headless box → user opens url by hand
+  spawn(cmd!, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref()
 }

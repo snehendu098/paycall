@@ -1,6 +1,7 @@
+#!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { createAgent, describeResponse, usd } from 'paycall-sdk'
+import { createAgent, describeResponse, usd } from '@paycall-live/sdk'
 import { z } from 'zod'
 import { KEY_FILE, loadKey, login, openBrowser, type Started } from './login'
 

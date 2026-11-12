@@ -1,4 +1,4 @@
-# paycall-mcp
+# @paycall-live/mcp
 
 Stdio MCP server that lets an AI agent pay for x402 (HTTP 402) APIs from your prepaid PayCall balance.
 
@@ -16,23 +16,23 @@ Tools:
 Add the server once (no key needed):
 
 ```sh
-claude mcp add paycall -- bun run /Users/roydevelops/Desktop/Dev/Hackathons/paypal/main/paycall-mcp/src/index.ts
+claude mcp add paycall -- npx -y @paycall-live/mcp
 ```
 
 Claude Desktop, `claude_desktop_config.json`:
 
 ```json
-{ "mcpServers": { "paycall": { "command": "bun", "args": ["run", "/Users/roydevelops/Desktop/Dev/Hackathons/paypal/main/paycall-mcp/src/index.ts"] } } }
+{ "mcpServers": { "paycall": { "command": "npx", "args": ["-y", "@paycall-live/mcp"] } } }
 ```
 
-(If Claude Desktop can't find `bun`, use its absolute path, e.g. `~/.bun/bin/bun`.)
+Needs Node 20+. (If Claude Desktop can't find `npx`, use its absolute path.)
 
 ## Login
 
 Ask Claude to "log in to PayCall", or run:
 
 ```sh
-bun run /Users/roydevelops/Desktop/Dev/Hackathons/paypal/main/paycall-mcp/src/index.ts login [name]
+npx -y @paycall-live/mcp login [name]
 ```
 
 It makes an Ed25519 key on this machine, prints a code and opens the dashboard's connect page. Log in, type the code, approve. The key is saved to `~/.config/paycall/agent.json` (mode 600) and is picked up without restarting the MCP server. Only the public key is ever sent.
@@ -51,4 +51,6 @@ bun run scripts/smoke.ts         # live: fresh unfunded owner → expects the "i
 bun run scripts/login-smoke.ts   # local worker: SK=<service key> PAYCALL_API=http://localhost:8787 KEY_FILE=/tmp/k.json
 ```
 
-Note: `paycall-sdk` comes from `file:../paycall-sdk`. Bun symlinks each file, so edits show up right away. If you add new files to the SDK, run `bun install --force` here.
+Note: in this repo `@paycall-live/sdk` comes from `file:../paycall-sdk`. Bun symlinks each file, so edits show up right away. If you add new files to the SDK, run `bun install --force` here.
+
+Publish: `bun run build` runs on `npm publish` (prepublishOnly). Swap the sdk dep to the registry version first (`bun add @paycall-live/sdk@^<version>`).
