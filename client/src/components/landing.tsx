@@ -56,7 +56,6 @@ const feed: Feed[] = [
 const EVERY = 1800
 const FLY = 1100 // ms for the dot to travel an arc
 const LIFE = 2400
-const TAIL = 0.3 // bright tail length, fraction of the arc
 
 // cobe shader math: world m = Lᵀ·view, globe radius 0.8 of half-size
 const D2R = Math.PI / 180
@@ -140,13 +139,10 @@ export function NetworkGlobe() {
       if (age > LIFE) continue
       const pts = arcs[l.i]!.map(px), N = pts.length - 1
       const fade = Math.min(1, age / 200) * Math.min(1, (LIFE - age) / 500)
-      // tail = [t − 0.3, t] of the arc; t keeps running past 1 so the tail drains into the payee instead of freezing
-      const t = age / FLY, head = Math.min(1, t), h = Math.round(head * N)
-      const tail = Math.round(Math.max(0, t - TAIL) * N)
-      ctx.setLineDash([4, 6]); ctx.lineWidth = 2; ctx.strokeStyle = `rgb(143 176 245 / ${0.45 * fade})`
+      // dotted route + travelling dot only (no solid tail over the dots)
+      const head = Math.min(1, age / FLY), h = Math.round(head * N)
+      ctx.setLineDash([4, 6]); ctx.lineWidth = 2; ctx.strokeStyle = `rgb(143 176 245 / ${0.6 * fade})`
       path(pts, 0, N)
-      ctx.setLineDash([]); ctx.lineWidth = 3; ctx.strokeStyle = `rgb(143 176 245 / ${0.95 * fade})`
-      if (tail < h) path(pts, tail, h)
       const p = pts[h]!
       if (head < 1 && p.on) {
         ctx.fillStyle = 'rgb(232 228 220)'; ctx.shadowColor = 'rgb(143 176 245)'; ctx.shadowBlur = 12
