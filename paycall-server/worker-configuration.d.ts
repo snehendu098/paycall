@@ -17,6 +17,7 @@ interface __BaseEnv_CloudflareBindings {
 	PAYCALL_SERVICE_KEY: string;
 	BETTER_AUTH_SECRET: string;
 	RESEND_API_KEY: string;
+	ADMIN_EMAILS: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
@@ -29,7 +30,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PAYPAL_API" | "DASHBOARD_ORIGIN" | "RESEND_FROM" | "FEE_BPS" | "PAYOUT_MIN_MICROS" | "PAYPAL_CLIENT_ID" | "PAYPAL_CLIENT_SECRET" | "PAYPAL_WEBHOOK_ID" | "ADMIN_KEY" | "PAYCALL_SERVICE_KEY" | "BETTER_AUTH_SECRET" | "RESEND_API_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PAYPAL_API" | "DASHBOARD_ORIGIN" | "RESEND_FROM" | "FEE_BPS" | "PAYOUT_MIN_MICROS" | "PAYPAL_CLIENT_ID" | "PAYPAL_CLIENT_SECRET" | "PAYPAL_WEBHOOK_ID" | "ADMIN_KEY" | "PAYCALL_SERVICE_KEY" | "BETTER_AUTH_SECRET" | "RESEND_API_KEY" | "ADMIN_EMAILS">> {}
 }
 declare module "*.txt" {
 	const value: string;

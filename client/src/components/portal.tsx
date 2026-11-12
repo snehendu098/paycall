@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from
 import { cn } from '@/lib/utils'
 import { $ } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
-import { pc, type Role } from '@/lib/pc'
+import { me, pc, type Role } from '@/lib/pc'
 import { Rule } from '@/components/ds'
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from '@/components/shadcn/dialog'
 import {
@@ -30,7 +30,7 @@ export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e
 // ---------- data ----------
 
 /** GET via BFF; `reload` refetches without blanking. `enabled=false` → idle. */
-export function useApi<T>(role: Role, path: string, enabled = true) {
+export function useApi<T>(role: Role | 'admin', path: string, enabled = true) {
   const [data, setData] = useState<T>()
   const [error, setError] = useState('')
   const reload = () => pc<T>(role, path).then((d) => { setData(d); setError('') }, (e) => setError(errMsg(e)))
@@ -224,12 +224,15 @@ export function PortalNav() {
   const [scrolled, setScrolled] = useState(false)
   useMotionValueEvent(useScroll().scrollY, 'change', (y) => setScrolled(y > 8))
   const signOut = () => authClient.signOut().then(() => router.push('/login'))
+  const [admin, setAdmin] = useState(false)
+  const uid = user?.id
+  useEffect(() => { if (uid) me().then((m) => setAdmin(m.admin), () => {}) }, [uid])
 
   return (
     <header className={cn('sticky top-0 z-30 transition-[background-color,backdrop-filter] duration-300', scrolled ? 'bg-background/70 backdrop-blur-md' : 'bg-background')}>
       <div className="grid h-14 grid-cols-[1fr_auto_1fr] items-stretch gap-3 px-4 md:px-6">
         <nav className="flex items-stretch gap-1" aria-label="Portal">
-          {tabs.map((t) => {
+          {(admin ? [...tabs, { href: '/app/admin', label: 'Admin' }] : tabs).map((t) => {
             const on = path.startsWith(t.href)
             return (
               <Link

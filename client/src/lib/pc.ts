@@ -14,10 +14,13 @@ async function call<T>(url: string, init: { method?: string; body?: unknown }): 
   return data as T
 }
 
-export const pc = <T>(role: Role, path: string, init: { method?: string; body?: unknown } = {}) =>
+export const pc = <T>(role: Role | 'admin', path: string, init: { method?: string; body?: unknown } = {}) =>
   call<T>(`/api/pc/${role}/${path.replace(/^\//, '')}`, init)
 
 export const enable = (body: { role: 'buyer' } | { role: 'seller'; name: string; paypalEmail: string }) =>
   call<{ ownerId?: string; sellerId?: string }>('/api/pc/enable', { body })
+
+/** Admin = session email in worker ADMIN_EMAILS; server re-checks every admin call. */
+export const me = () => call<{ admin: boolean }>('/api/pc/me', {})
 
 export const events = (role: Role) => new EventSource(`/api/pc/${role}/events`)
