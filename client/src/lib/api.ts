@@ -43,7 +43,7 @@ export type Dispute = { id: number; entryId: number; ownerId: string; sellerId: 
 // admin view of a dispute: + parties, listing (null if url isn't /p/<id>), charge
 export type AdminDispute = Dispute & Partial<Pricing> & {
   charged: number; units: number | null; unit: 'token' | 'char' | null; agentPubkey: string | null; agentName: string | null
-  ownerEmail: string; sellerEmail: string | null; seller: string; sellerPaypal: string; endpointId: string | null; endpoint: string | null
+  ownerEmail: string; ownerPaypal?: string | null; sellerEmail: string | null; seller: string; sellerPaypal: string; endpointId: string | null; endpoint: string | null
 }
 
 export type Pricing = { pricing: 'call' | 'token' | 'char' | 'pass'; price: number; maxAmount: number | null; passSeconds: number | null }

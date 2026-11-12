@@ -15,7 +15,7 @@ export type Order = {
   id: string
   status: string
   purchase_units: { payments?: { captures?: Capture[] } }[]
-  payment_source?: { paypal?: { attributes?: { vault?: { id?: string; status?: string; customer?: { id?: string } } } } }
+  payment_source?: { paypal?: { email_address?: string; attributes?: { vault?: { id?: string; status?: string; customer?: { id?: string } } } } }
 }
 
 const TOKEN_KEY = 'paypal:token'

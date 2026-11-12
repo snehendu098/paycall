@@ -61,6 +61,7 @@ export default function AdminDisputePage() {
         <Block title="Buyer">
           <Rows rows={[
             ['Email', d.ownerEmail],
+            ['PayPal', d.ownerPaypal ?? '—'],
             ['Agent', d.agentName ?? '—'],
             ['Agent key', <span key="k" className="font-mono" title={d.agentPubkey ?? undefined}>{short(d.agentPubkey)}</span>],
           ]} />

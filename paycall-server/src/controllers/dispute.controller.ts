@@ -1,10 +1,11 @@
 import { zValidator } from '@hono/zod-validator'
-import { desc, eq, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
-import { agents, disputes, endpoints, entries, owners, sellers } from '../db/schema'
+import { agents, disputes, endpoints, entries, owners, sellers, topups } from '../db/schema'
 import { factory } from '../lib/factory'
 import { closeDispute, decideDispute, escalateDispute, openDispute, refund } from '../ledger'
+import { paypal, type Order } from '../lib/paypal'
 import { zMicros } from '../lib/util'
 
 const id = (c: { req: { param: (k: string) => string | undefined } }) => {
@@ -86,7 +87,12 @@ export const escalated = factory.createHandlers(async (c) => c.json(await adminR
 export const adminGet = factory.createHandlers(async (c) => {
   const [d] = await adminRows(c.var.db, eq(disputes.id, id(c)))
   if (!d) throw new HTTPException(404, { message: 'unknown_dispute' })
-  return c.json(d)
+  // buyer paypal not stored: read live from latest paid order, admin-only so 1 call ok
+  const [t] = await c.var.db.select({ order: topups.paypalOrderId }).from(topups)
+    .where(and(eq(topups.ownerId, d.ownerId), eq(topups.status, 'completed'), isNotNull(topups.paypalOrderId)))
+    .orderBy(desc(topups.createdAt)).limit(1)
+  const ownerPaypal = t?.order ? await paypal<Order>(c.env, 'GET', `/v2/checkout/orders/${t.order}`).then((o) => o.payment_source?.paypal?.email_address ?? null, () => null) : null
+  return c.json({ ...d, ownerPaypal })
 })
 export const adminDecide = factory.createHandlers(zValidator('json', z.object({ action: z.enum(['refund', 'reject']), reply: z.string().trim().max(500).optional() })), async (c) => {
   const { action, reply } = c.req.valid('json')

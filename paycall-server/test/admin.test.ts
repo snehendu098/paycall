@@ -5,13 +5,13 @@ import { getMigrations } from 'better-auth/db/migration'
 import { eq, sql } from 'drizzle-orm'
 import { makeAuth } from '../src/dashboard'
 import { connect } from '../src/db'
-import { agents, disputes, endpoints, entries, owners, sellers } from '../src/db/schema'
+import { agents, disputes, endpoints, entries, owners, sellers, topups } from '../src/db/schema'
 import worker from '../src/index'
 
 const connectionString = process.env.DATABASE_URL!
 const { db, close } = await connect(connectionString)
 const O = 'http://localhost'
-const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: 'svc_test_key', ADMIN_KEY: 'adm_test_key', ADMIN_EMAILS: ' Boss@x.io , other@x.io', DASHBOARD_ORIGIN: O, BETTER_AUTH_SECRET: 'x'.repeat(32), RESEND_API_KEY: '' } as unknown as CloudflareBindings
+const env = { HYPERDRIVE: { connectionString }, PAYCALL_SERVICE_KEY: 'svc_test_key', ADMIN_KEY: 'adm_test_key', ADMIN_EMAILS: ' Boss@x.io , other@x.io', DASHBOARD_ORIGIN: O, BETTER_AUTH_SECRET: 'x'.repeat(32), RESEND_API_KEY: '', PAYPAL_API: 'https://pp.test', KV: { get: async () => 'tok', put: async () => {} } } as unknown as CloudflareBindings
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
 const call = (cookie: string, path: string, body?: unknown) =>
   worker.fetch(new Request(`${O}${path}`, { method: body ? 'POST' : 'GET', headers: { origin: O, cookie, 'content-type': 'application/json' }, body: body && JSON.stringify(body) }), env, ctx)
@@ -29,7 +29,7 @@ beforeAll(async () => {
   const { auth, end } = makeAuth(env)
   await (await getMigrations(auth.options)).runMigrations()
   await end()
-  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints, approvals cascade`)
+  await db.execute(sql`truncate owners, agents, sellers, channels, entries, endpoints, approvals, topups cascade`)
   await db.execute(sql`truncate "user", "session", "verification" cascade`)
 })
 afterAll(close)
@@ -56,10 +56,15 @@ test('admin bff: non-admin 403, admin lists queue + decides escalated dispute', 
   expect(q).toMatchObject([{ id: d!.id, resource: '/p/ep_1/v1?q=1', endpoint: 'forecast', ownerEmail: 'o@x.io' }])
   // dashboard accounts: real login email, not synthetic owners.email
   await db.execute(sql`update "user" set "ownerId" = 'own_1', "sellerId" = 'sel_1' where email = 'nobody@x.io'`)
+  // buyer paypal: read live from latest completed order
+  await db.insert(topups).values({ id: 'tu_1', ownerId: 'own_1', kind: 'manual', status: 'completed', amount: 1, paypalOrderId: 'ORD1' })
+  const pp = spyOn(globalThis, 'fetch').mockImplementation((async (u: string) =>
+    Response.json(u === 'https://pp.test/v2/checkout/orders/ORD1' ? { id: 'ORD1', payment_source: { paypal: { email_address: 'buyer@pp.io' } } } : {}, { status: u.endsWith('ORD1') ? 200 : 404 })) as never)
   const one = await call(boss, `/api/pc/admin/disputes/${d!.id}`)
+  pp.mockRestore()
   expect(one.status).toBe(200)
   expect(await one.json()).toMatchObject({
-    id: d!.id, status: 'escalated', reason: 'bad data', reply: 'was fine', ownerEmail: 'nobody@x.io', sellerEmail: 'nobody@x.io', agentName: 'bot', agentPubkey: 'pk_bot',
+    id: d!.id, status: 'escalated', reason: 'bad data', reply: 'was fine', ownerEmail: 'nobody@x.io', ownerPaypal: 'buyer@pp.io', sellerEmail: 'nobody@x.io', agentName: 'bot', agentPubkey: 'pk_bot',
     seller: 'DataMart', sellerPaypal: 's@x.io', sellerId: 'sel_1', endpointId: 'ep_1', endpoint: 'forecast', pricing: 'token', price: 100, maxAmount: 50_000, charged: 10_000, units: 100, unit: 'token',
   })
   expect((await call(boss, '/api/pc/admin/disputes/999999')).status).toBe(404)
