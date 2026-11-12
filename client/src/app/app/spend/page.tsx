@@ -95,7 +95,7 @@ function Spend() {
         <Activity role="buyer" rows={rows} fresh={fresh} names={names} onChanged={() => { disputes.reload(); refresh() }} />
       </Block>
 
-      <Disputes role="buyer" list={disputes.data} onChanged={disputes.reload} />
+      <Disputes role="buyer" list={disputes.data} charges={rows} onChanged={disputes.reload} />
     </Page>
   )
 }

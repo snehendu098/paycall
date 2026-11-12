@@ -100,7 +100,7 @@ function Earn() {
         </div>
       </section>
 
-      <Disputes role="seller" list={disputes.data} onChanged={changed} />
+      <Disputes role="seller" list={disputes.data} charges={rows} onChanged={changed} />
 
       <Block title="Endpoints" aside={<NewEndpoint onCreated={eps.reload} />}>
         <EndpointList list={eps.data} reload={eps.reload} />

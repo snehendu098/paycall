@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { $, ago, short, toDollars, toMicros, type Dispute, type Entry } from '@/lib/api'
 import { events, pc, type Role } from '@/lib/pc'
-import { Input } from '@/components/ds'
+import { Badge, Input } from '@/components/ds'
 import { Act, Block, ease, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
 
 const TYPES = ['topup', 'reload', 'charge', 'refund', 'payout', 'fee'] as const
@@ -250,19 +250,31 @@ const daysLeft = (from: string, span: number) => Math.max(1, Math.ceil((+new Dat
 const live = (d: Dispute) => d.status === 'open' || d.status === 'escalated'
 const canEscalate = (d: Dispute) => d.status === 'rejected' && d.decidedBy === 'seller' && !!d.resolvedAt && Date.now() - +new Date(d.resolvedAt) < ESCALATE
 
-// where it stands, from the viewer's side
-function stage(d: Dispute, role: Role): [string, boolean] {
-  if (d.status === 'open') return [role === 'seller' ? `needs your answer · auto-refund in ${daysLeft(d.createdAt, RESPOND)}d` : `waiting on seller · auto-refund in ${daysLeft(d.createdAt, RESPOND)}d`, true]
-  if (d.status === 'escalated') return ['PayCall reviewing', true]
-  if (d.status === 'refunded') return [d.decidedBy === 'timeout' ? "refunded · seller didn't answer" : d.decidedBy === 'admin' ? 'refunded by PayCall' : 'refunded', false]
-  if (d.decidedBy === 'admin') return ['rejected by PayCall · final', false]
-  if (!canEscalate(d)) return [role === 'seller' ? 'rejected by you' : 'rejected by seller', false]
+type Stage = { label: string; tone: 'live' | 'muted' | 'default'; hint?: string }
+// where it stands + what happens next, from the viewer's side
+function stage(d: Dispute, role: Role): Stage {
+  if (d.status === 'open') {
+    const n = daysLeft(d.createdAt, RESPOND)
+    return { label: 'Open', tone: 'live', hint: role === 'seller' ? `Refund or reject within ${n}d, or it refunds automatically.` : `Waiting on the seller. Refunds automatically in ${n}d if they don't answer.` }
+  }
+  if (d.status === 'escalated') return { label: 'PayCall reviewing', tone: 'live', hint: 'PayCall makes the final call.' }
+  if (d.status === 'refunded') return { label: 'Refunded', tone: 'muted', hint: d.decidedBy === 'timeout' ? "Seller didn't answer in time." : d.decidedBy === 'admin' ? 'Refunded by PayCall.' : undefined }
+  if (d.decidedBy === 'admin') return { label: 'Rejected · final', tone: 'muted', hint: 'PayCall sided with the seller.' }
+  if (!canEscalate(d)) return { label: 'Rejected', tone: 'muted' }
   const n = daysLeft(d.resolvedAt!, ESCALATE)
-  return role === 'seller' ? [`rejected by you · buyer can escalate for ${n}d`, false] : [`rejected by seller · escalate within ${n}d`, true]
+  return { label: 'Rejected', tone: 'default', hint: role === 'seller' ? `The buyer can escalate to PayCall for ${n}d.` : `Disagree? Escalate to PayCall once, ${n}d left.` }
 }
+const Quote = ({ who, text }: { who: string; text: string }) => (
+  <p className="border-l border-border pl-3 text-[13px] leading-relaxed text-muted-foreground">
+    <span className="text-foreground/70">{who}</span> {text}
+  </p>
+)
+// listing name for a dispute: from the ledger row, else the url path
+const titleOf = (d: Dispute, charges?: Entry[]) =>
+  charges?.find((e) => Number(e.id) === d.entryId)?.endpoint ?? (d.resource ? new URL(d.resource, 'https://x').pathname.split('/').filter(Boolean).slice(2).join('/') || 'Charge' : 'Charge')
 
 /** Disputes, actionable first. Seller refunds or rejects (with reason); buyer can escalate a reject to PayCall once. Hidden when none. */
-export function Disputes({ role, list, onChanged }: { role: Role; list?: Dispute[]; onChanged: () => void }) {
+export function Disputes({ role, list, charges, onChanged }: { role: Role; list?: Dispute[]; charges?: Entry[]; onChanged: () => void }) {
   const [busy, setBusy] = useState<number>()
   const [rejecting, setRejecting] = useState<Dispute>()
   if (!list?.length) return null
@@ -291,31 +303,40 @@ export function Disputes({ role, list, onChanged }: { role: Role; list?: Dispute
 
   return (
     <Block title="Disputes" aside={role === 'seller' && held && <span className="text-xs text-muted-foreground">Held from payouts until decided</span>}>
-      <ul className="max-h-[420px] overflow-y-auto border-t border-border" data-testid="disputes">
+      <ul className="border-t border-border" data-testid="disputes">
         {sorted.map((d) => {
-          const [text, hot] = stage(d, role)
-          return (
-            <li key={d.id} className="flex flex-col gap-3 border-b border-border py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate" title={d.reason}>{d.reason}</span>
-                  <span className="shrink-0 font-mono">{$(d.amount)}</span>
-                </div>
-                {d.reply && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={d.reply}>Seller: “{d.reply}”</div>}
-                {d.adminNote && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={d.adminNote}>PayCall: “{d.adminNote}”</div>}
-                <div className="mt-0.5 truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                  <span className={hot ? 'text-live' : undefined}>{text}</span>
-                  {d.resource && <> · <span className="font-mono" title={d.resource}>{d.resource}</span></>} · {ago(d.createdAt)}
-                </div>
+          const st = stage(d, role)
+          const action =
+            role === 'seller' && d.status === 'open' ? (
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                <Act disabled={busy === d.id} onClick={() => setRejecting(d)}>Reject</Act>
+                <Act primary disabled={busy === d.id} onClick={() => act(d, String(d.id), { action: 'refund' }, `Refunded ${$(d.amount)}`)}>Refund</Act>
               </div>
-              {role === 'seller' && d.status === 'open' && (
-                <div className="grid grid-cols-2 gap-2 sm:flex">
-                  <Act disabled={busy === d.id} onClick={() => setRejecting(d)}>Reject</Act>
-                  <Act primary disabled={busy === d.id} onClick={() => act(d, String(d.id), { action: 'refund' }, `Refunded ${$(d.amount)}`)}>Refund</Act>
+            ) : role === 'buyer' && canEscalate(d) ? (
+              <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review')}>Escalate</Act>
+            ) : null
+          return (
+            <li key={d.id} className="flex flex-col gap-3 border-b border-border py-5 last:border-b-0">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="truncate text-[15px]" title={d.resource ?? undefined}>{titleOf(d, charges)}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground" suppressHydrationWarning>
+                    <Badge tone={st.tone}>{st.label}</Badge>
+                    <span>opened {ago(d.createdAt)}</span>
+                  </div>
                 </div>
-              )}
-              {role === 'buyer' && canEscalate(d) && (
-                <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review')}>Escalate to PayCall</Act>
+                <span className="shrink-0 font-mono text-sm tabular-nums">{$(d.amount)}</span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Quote who={role === 'buyer' ? 'You:' : 'Buyer:'} text={`“${d.reason}”`} />
+                {d.reply && <Quote who={role === 'seller' ? 'You:' : 'Seller:'} text={`“${d.reply}”`} />}
+                {d.adminNote && <Quote who="PayCall:" text={`“${d.adminNote}”`} />}
+              </div>
+              {(st.hint || action) && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  {st.hint ? <p className="text-[13px] text-muted-foreground" suppressHydrationWarning>{st.hint}</p> : <span />}
+                  {action}
+                </div>
               )}
             </li>
           )
