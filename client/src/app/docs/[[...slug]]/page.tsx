@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { ArrowLeftIcon, ArrowRightIcon } from '@phosphor-icons/react/dist/ssr'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { href, pages } from '../content'
@@ -67,7 +68,9 @@ function Pager({ to, dir }: { to: (typeof pages)[number]; dir: 'Previous' | 'Nex
       href={href(to.slug)}
       className={`flex flex-col gap-1 border border-border bg-card px-4 py-3 transition-colors hover:border-foreground/40 ${dir === 'Next' ? 'sm:col-start-2 sm:items-end sm:text-right' : ''}`}
     >
-      <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">{dir === 'Next' ? 'Next →' : '← Previous'}</span>
+      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+        {dir === 'Next' ? <>Next<ArrowRightIcon aria-hidden className="size-3" /></> : <><ArrowLeftIcon aria-hidden className="size-3" />Previous</>}
+      </span>
       <span className="text-sm">{to.title}</span>
     </Link>
   )
