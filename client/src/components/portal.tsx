@@ -245,7 +245,8 @@ export function PortalNav() {
           })}
         </nav>
         <Link href="/" className="self-center text-lg tracking-tight">PayCall</Link>
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-4">
+          <Link href="/docs" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Docs</Link>
           <DropdownMenu>
             <DropdownMenuTrigger
               className="group flex h-8 max-w-full items-center gap-2.5 border border-foreground/30 px-1 text-[13px] outline-none transition-colors hover:border-foreground focus-visible:border-foreground data-[state=open]:border-foreground sm:pr-3"

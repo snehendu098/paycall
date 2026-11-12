@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Btn, Frame, Index, Item, Label, Mark, Nav, Reveal, Rule, Spotlight, Stagger } from '@/components/ds'
 import { NetworkGlobe } from '@/components/landing'
@@ -270,9 +271,9 @@ export default function Home() {
       >
         <span>Built on PayPal (sandbox) · x402</span>
         <nav className="flex gap-8">
-          <a href="#" className="transition-colors hover:text-foreground">
+          <Link href="/docs" className="transition-colors hover:text-foreground">
             Docs
-          </a>
+          </Link>
           <a href="https://github.com/snehendu098/paycall" target="_blank" rel="noreferrer" className="transition-colors hover:text-foreground">
             GitHub
           </a>
