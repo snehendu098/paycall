@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeftIcon } from '@phosphor-icons/react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
@@ -87,7 +88,7 @@ function Detail() {
   )
 }
 
-const Back = () => <Link href="/app/catalog" className="self-start text-[13px] text-muted-foreground transition-colors hover:text-foreground">← Catalog</Link>
+const Back = () => <Link href="/app/catalog" className="inline-flex items-center gap-1.5 self-start text-[13px] text-muted-foreground transition-colors hover:text-foreground"><ArrowLeftIcon aria-hidden className="size-3.5" />Catalog</Link>
 
 export default function ListingPage() {
   return <Suspense fallback={<PageSkeleton />}><Detail /></Suspense>

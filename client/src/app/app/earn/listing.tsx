@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { XIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, XIcon } from '@phosphor-icons/react'
 import { ago, dur, toDollars, toMicros, type Pricing, type Route } from '@/lib/api'
 import { pc } from '@/lib/pc'
 import { Code, Input } from '@/components/ds'
@@ -283,7 +283,7 @@ export function ListingForm({ ep }: { ep?: Endpoint }) {
   return (
     <Page className="max-w-[760px] gap-10 md:gap-12">
       <section className="flex flex-col gap-4">
-        <Link href="/app/earn" className="self-start text-[13px] text-muted-foreground transition-colors hover:text-foreground">← Earn</Link>
+        <Link href="/app/earn" className="inline-flex items-center gap-1.5 self-start text-[13px] text-muted-foreground transition-colors hover:text-foreground"><ArrowLeftIcon aria-hidden className="size-3.5" />Earn</Link>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <h1 className="truncate text-[40px] font-light leading-tight tracking-[-0.03em] md:text-5xl">{ep ? ep.name : 'New listing'}</h1>

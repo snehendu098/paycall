@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeftIcon } from '@phosphor-icons/react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useState, type FormEvent, type ReactNode } from 'react'
@@ -87,7 +88,7 @@ export default function AdminDisputePage() {
   )
 }
 
-const Back = () => <Link href="/app/admin" className="text-sm text-muted-foreground transition-colors hover:text-foreground">← Admin</Link>
+const Back = () => <Link href="/app/admin" className="inline-flex items-center gap-1.5 self-start text-sm text-muted-foreground transition-colors hover:text-foreground"><ArrowLeftIcon aria-hidden className="size-4" />Admin</Link>
 
 function Rows({ rows }: { rows: [string, ReactNode][] }) {
   return (
