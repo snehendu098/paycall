@@ -2,16 +2,16 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type ChangeEvent, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { ArrowLeftIcon, XIcon } from '@phosphor-icons/react'
-import { ago, dur, toDollars, toMicros, type Pricing, type Route } from '@/lib/api'
+import { ago, toDollars, toMicros, type Pricing, type Route } from '@/lib/api'
 import { pc } from '@/lib/pc'
-import { Code, Input } from '@/components/ds'
+import { Code, Input, Select } from '@/components/ds'
 import { Md } from '@/components/md'
 import { act, Act, errMsg, Field, Page } from '@/components/portal'
 import { cn } from '@/lib/utils'
-import { HeaderFields, MODES, PASSES, PRICE, PricingFields, readHeaders, readPricing, type Endpoint, type Errs } from './endpoints'
+import { HeaderFields, MODES, passOpts, PRICE, PricingFields, readHeaders, readPricing, type Endpoint, type Errs } from './endpoints'
 
 type Mode = Endpoint['mode']
 type Draft = { method: string; path: string; price: string; pricing: Pricing['pricing']; maxAmount: string; passSeconds: number; description: string; example: string; probe?: Route['probe'] }
@@ -39,8 +39,24 @@ const routeErr = (d: Draft) =>
     : !PRICE.test(d.price.trim()) || toMicros(d.price) < 1 ? 'Price: dollars > 0'
       : metered(d.pricing) && (!PRICE.test(d.maxAmount.trim()) || toMicros(d.maxAmount) < toMicros(d.price)) ? 'Max per call: at least the price'
         : d.example && !/^\/\S*$/.test(d.example.trim()) ? 'Example: a real path like /items/42' : undefined
+/** Routes JSON (manifest `routes` array, or `{ routes }` e.g. whole paycall.json) → drafts, or error. Field checks stay in routeErr. */
+export function parseRoutes(text: string): Draft[] | string {
+  let raw: unknown
+  try { raw = JSON.parse(text) } catch { return 'Not valid JSON' }
+  const rs = Array.isArray(raw) ? raw : (raw as { routes?: unknown } | null)?.routes
+  if (!Array.isArray(rs) || !rs.length || rs.some((r) => typeof r?.path !== 'string')) return 'Expected [{ "method", "path", "price" }] or { "routes": [...] }'
+  const out: Draft[] = []
+  for (const [i, r] of (rs as Record<string, unknown>[]).entries()) {
+    const method = String(r.method ?? 'GET').toUpperCase(), pricing = String(r.pricing ?? 'call')
+    if (!METHODS.includes(method)) return `Route ${i + 1}: unknown method ${method}`
+    if (!MODES.some((m) => m.k === pricing)) return `Route ${i + 1}: pricing is call, token, char or pass`
+    const str = (k: string) => (r[k] == null ? '' : String(r[k]))
+    out.push({ ...blank, method, path: str('path'), price: str('price') || blank.price, pricing: pricing as Draft['pricing'], maxAmount: str('maxAmount') || blank.maxAmount, passSeconds: Number(r.passSeconds) || blank.passSeconds, description: str('description'), example: str('example') })
+  }
+  return out
+}
 const isHttps = (u: string) => { try { return new URL(u).protocol === 'https:' } catch { return false } }
-const sel = 'h-9 w-full border border-input bg-card px-2 text-[13px] outline-none transition-colors hover:border-foreground/30 focus-visible:border-foreground'
+const sel = 'h-9 data-[size=default]:h-9 px-2 text-[13px]'
 const cell = 'h-9 font-mono text-xs md:text-xs'
 const textarea = 'w-full resize-y border border-input bg-card px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:border-foreground/30 focus-visible:border-foreground'
 
@@ -56,6 +72,11 @@ export const MANIFEST = `{
     { "method": "POST", "path": "/summarize", "price": "0.00002", "pricing": "token", "maxAmount": "0.05" }
   ]
 }`
+const ROUTES = `[
+  { "method": "GET", "path": "/forecast", "price": "0.005", "description": "7 day forecast, ?city=" },
+  { "method": "POST", "path": "/summarize", "price": "0.00002", "pricing": "token", "maxAmount": "0.05" },
+  { "method": "GET", "path": "/radar", "price": "1", "pricing": "pass", "passSeconds": 86400 }
+]`
 
 /** Read picked files as text. */
 const read = (files: FileList | null) => Promise.all([...(files ?? [])].map(async (f) => ({ name: f.name, text: await f.text() })))
@@ -99,7 +120,7 @@ function ProbeLine({ p }: { p?: Route['probe'] }) {
   return <span className="text-xs text-destructive">✕ Not listed: {why}</span>
 }
 
-function RouteRow({ d, i, set, remove }: { d: Draft; i: number; set: (d: Partial<Draft>) => void; remove?: () => void }) {
+function RouteRow({ d, i, set, remove, onPaste }: { d: Draft; i: number; set: (d: Partial<Draft>) => void; remove?: () => void; onPaste: (e: ClipboardEvent<HTMLInputElement>) => void }) {
   const err = d.path || d.description ? routeErr(d) : undefined
   const money = (k: 'price' | 'maxAmount', label: string) => (
     <Cell label={label}>
@@ -113,10 +134,10 @@ function RouteRow({ d, i, set, remove }: { d: Draft; i: number; set: (d: Partial
     <li data-testid="route" className="flex flex-col gap-3 border border-border p-3 sm:p-4">
       <div className="flex items-end gap-2">
         <Cell label="Method" className="w-[92px] shrink-0">
-          <select value={d.method} onChange={(e) => set({ method: e.target.value })} className={cn(sel, 'font-mono text-xs')}>{METHODS.map((m) => <option key={m}>{m}</option>)}</select>
+          <Select value={d.method} onValueChange={(method) => set({ method })} opts={METHODS.map((m) => ({ v: m, label: m }))} className={cn(sel, 'font-mono text-xs')} />
         </Cell>
         <Cell label={`Route ${i + 1} path`} className="flex-1">
-          <Input value={d.path} onChange={(e) => set({ path: e.target.value })} placeholder="/forecast" spellCheck={false} className={cell} />
+          <Input value={d.path} onChange={(e) => set({ path: e.target.value })} onPaste={onPaste} placeholder="/forecast" spellCheck={false} className={cell} />
         </Cell>
         {remove && (
           <button type="button" aria-label={`Remove route ${i + 1}`} onClick={remove} className="grid size-9 shrink-0 place-items-center border border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground">
@@ -126,16 +147,13 @@ function RouteRow({ d, i, set, remove }: { d: Draft; i: number; set: (d: Partial
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Cell label="Pricing">
-          <select value={d.pricing} onChange={(e) => set({ pricing: e.target.value as Draft['pricing'] })} className={sel}>{MODES.map((m) => <option key={m.k} value={m.k}>{m.label}</option>)}</select>
+          <Select value={d.pricing} onValueChange={(v) => set({ pricing: v as Draft['pricing'] })} opts={MODES.map((m) => ({ v: m.k, label: m.label }))} className={sel} />
         </Cell>
         {money('price', d.pricing === 'call' ? 'Price' : d.pricing === 'pass' ? 'Per pass' : `Per ${d.pricing}`)}
         {metered(d.pricing) && money('maxAmount', 'Max per call')}
         {d.pricing === 'pass' && (
           <Cell label="Pass lasts">
-            <select value={d.passSeconds} onChange={(e) => set({ passSeconds: Number(e.target.value) })} className={sel}>
-              {PASSES.map(([s, l]) => <option key={s} value={s}>{l}</option>)}
-              {!PASSES.some(([s]) => s === d.passSeconds) && <option value={d.passSeconds}>{dur(d.passSeconds)}</option>}
-            </select>
+            <Select value={String(d.passSeconds)} onValueChange={(v) => set({ passSeconds: Number(v) })} opts={passOpts(d.passSeconds)} className={sel} />
           </Cell>
         )}
         <Cell label={d.path.includes('/:') ? 'Example path (for the check)' : 'Example path'} className={cn(d.pricing === 'call' ? 'col-span-2' : 'col-span-2 sm:col-span-1')}>
@@ -143,7 +161,7 @@ function RouteRow({ d, i, set, remove }: { d: Draft; i: number; set: (d: Partial
         </Cell>
       </div>
       <Cell label="What it does">
-        <Input value={d.description} onChange={(e) => set({ description: e.target.value })} maxLength={300} placeholder="7 day forecast for ?city=" className="h-9 text-[13px] md:text-[13px]" />
+        <Input value={d.description} onChange={(e) => set({ description: e.target.value })} onPaste={onPaste} maxLength={300} placeholder="7 day forecast for ?city=" className="h-9 text-[13px] md:text-[13px]" />
       </Cell>
       {err ? <span className="text-xs text-destructive">{err}</span> : <ProbeLine p={d.probe} />}
     </li>
@@ -194,6 +212,7 @@ export function ListingForm({ ep }: { ep?: Endpoint }) {
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const files = useRef<HTMLInputElement>(null)
+  const routeFile = useRef<HTMLInputElement>(null)
   const putRoute = (i: number, d: Partial<Draft>) => setRoutes((rs) => rs.map((r, j) => (j === i ? { ...r, ...d, probe: undefined } : r)))
 
   async function importFiles(e: ChangeEvent<HTMLInputElement>) {
@@ -226,6 +245,28 @@ export function ListingForm({ ep }: { ep?: Endpoint }) {
     if (md) setDocs(md.text)
     setErrs({})
     toast.success(`Imported ${fs.map((f) => f.name).join(' + ')}`, { description: 'Review, then save.' })
+  }
+
+  /** Append parsed routes; untouched blank rows dropped, 50 max. */
+  function addRoutes(p: Draft[]) {
+    const all = [...routes.filter((r) => r.path.trim() || r.description.trim()), ...p]
+    setRoutes(all.slice(0, 50))
+    toast.success(`Added ${p.length - Math.max(0, all.length - 50)} routes`, all.length > 50 ? { description: `Capped at 50, ${all.length - 50} dropped.` } : undefined)
+  }
+  // vercel env style: paste routes json into a field → rows, else normal paste
+  function pasteRoutes(e: ClipboardEvent<HTMLInputElement>) {
+    const p = parseRoutes(e.clipboardData.getData('text'))
+    if (typeof p === 'string') return
+    e.preventDefault()
+    addRoutes(p)
+  }
+  async function uploadRoutes(e: ChangeEvent<HTMLInputElement>) {
+    const [f] = await read(e.target.files)
+    e.target.value = ''
+    if (!f) return
+    const p = parseRoutes(f.text)
+    if (typeof p === 'string') toast.error(`${f.name}: ${p}`)
+    else addRoutes(p)
   }
 
   async function recheck() {
@@ -300,6 +341,8 @@ export function ListingForm({ ep }: { ep?: Endpoint }) {
           <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-muted-foreground">
             <p>One listing per file. Same fields as the form; prices are dollar strings. <span className="font-mono text-foreground">mode</span>: <span className="font-mono text-foreground">hosted</span> (base URL + routes) or <span className="font-mono text-foreground">proxy</span> (<span className="font-mono text-foreground">upstreamUrl</span>, <span className="font-mono text-foreground">price</span>, <span className="font-mono text-foreground">pricing</span>). README.md becomes the docs. Nothing is saved until you press save.</p>
             <Code text={MANIFEST} className="[&_pre]:text-[12px]" />
+            <p>Routes only (self-hosted <span className="font-mono text-foreground">Upload .json</span> or paste into a route field). <span className="font-mono text-foreground">pricing</span>: <span className="font-mono text-foreground">call</span> (default), <span className="font-mono text-foreground">token</span> / <span className="font-mono text-foreground">char</span> (+ <span className="font-mono text-foreground">maxAmount</span>), <span className="font-mono text-foreground">pass</span> (+ <span className="font-mono text-foreground">passSeconds</span>). A whole paycall.json works too; its routes are taken.</p>
+            <Code text={ROUTES} className="[&_pre]:text-[12px]" />
           </div>
         </details>
       </section>
@@ -346,12 +389,19 @@ export function ListingForm({ ep }: { ep?: Endpoint }) {
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-[13px] text-muted-foreground">Routes <span className="font-mono text-xs text-muted-foreground/60">{routes.length}/50</span></span>
-                  {ep && <button type="button" onClick={recheck} disabled={checking} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground disabled:opacity-40">{checking ? 'Checking…' : 'Re-check saved routes'}</button>}
+                  <div className="flex gap-4">
+                    {ep && <button type="button" onClick={recheck} disabled={checking} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground disabled:opacity-40">{checking ? 'Checking…' : 'Re-check saved routes'}</button>}
+                    <input ref={routeFile} type="file" accept=".json,application/json" hidden onChange={uploadRoutes} />
+                    <button type="button" onClick={() => routeFile.current?.click()} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground">Upload .json</button>
+                  </div>
                 </div>
                 <ul className="flex flex-col gap-3">
-                  {routes.map((d, i) => <RouteRow key={i} d={d} i={i} set={(x) => putRoute(i, x)} remove={routes.length > 1 ? () => setRoutes((rs) => rs.filter((_, j) => j !== i)) : undefined} />)}
+                  {routes.map((d, i) => <RouteRow key={i} d={d} i={i} set={(x) => putRoute(i, x)} remove={routes.length > 1 ? () => setRoutes((rs) => rs.filter((_, j) => j !== i)) : undefined} onPaste={pasteRoutes} />)}
                 </ul>
-                <button type="button" disabled={routes.length >= 50} onClick={() => setRoutes((rs) => [...rs, { ...blank }])} className="self-start text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground disabled:opacity-40">+ Add route</button>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <button type="button" disabled={routes.length >= 50} onClick={() => setRoutes((rs) => [...rs, { ...blank }])} className="text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground disabled:opacity-40">+ Add route</button>
+                  <span className="text-xs text-muted-foreground/60">or upload a .json, or paste a routes JSON array into any path field</span>
+                </div>
                 {errs.routes ? <span className="text-xs text-destructive">{errs.routes}</span> : (
                   <span className="text-xs text-muted-foreground/80">On save PayCall calls each route without paying and expects a 402 from your middleware. Only passing routes are listed; free routes aren&apos;t.</span>
                 )}

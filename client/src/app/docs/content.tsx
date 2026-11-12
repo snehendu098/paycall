@@ -1054,6 +1054,61 @@ curl -X POST ${API}/endpoints \\
                   redirects not followed) and expects <C>402</C> with a <C>PAYMENT-REQUIRED</C> header offering <C>paycall-prepaid</C> with <C>payTo</C> = your seller id. Each route stores{' '}
                   <C>{'probe: { ok, checkedAt, error? }'}</C>. Only passing routes appear in the catalog and in <C>search_paid_apis</C>; free routes are simply not listed.
                 </P>
+                <P>
+                  <b className="font-normal text-foreground">Per token / per char.</b> Same as <A href="/docs/guides/middleware#metered">metered</A>: <C>metered: true</C>, <C>price</C> is the cap per call (match the
+                  route&apos;s <C>maxAmount</C>), and your handler reports actual use in dollars in <C>x-paycall-charge</C>. PayCall keeps that and refunds the rest.
+                </P>
+                <Pre title="app/api/summarize/route.ts">{`
+// route: { "method": "POST", "path": "/summarize", "price": "0.00002", "pricing": "token", "maxAmount": "0.05" }
+export const POST = withPaycall(async (req) => {
+  const out = await runModel(req)
+  return Response.json(out, { headers: { 'x-paycall-charge': String(out.usage.output_tokens * 0.00002) } })
+}, { ...opts, metered: true, price: '0.05' })`}</Pre>
+                <P>
+                  <b className="font-normal text-foreground">Time pass.</b> Add <C>{'pass: { seconds }'}</C>; <C>price</C> is the pass price. The pass covers the route path (its scope): the agent pays once, then
+                  calls free until it expires, proving who it is with <A href="/docs/pricing#time-pass"><C>PAYCALL-AGENT</C></A>. The middleware checks it with <C>POST /passes/check</C>. Needs{' '}
+                  <C>@paycall-live/middleware</C> &gt;= 0.2.0.
+                </P>
+                <Pre title="app/api/radar/route.ts">{`
+// route: { "method": "GET", "path": "/radar", "price": "1", "pricing": "pass", "passSeconds": 3600 }
+export const GET = withPaycall(async () => Response.json(await radar()), { ...opts, price: '1', pass: { seconds: 3600 } })`}</Pre>
+              </>
+            ),
+          },
+          {
+            id: 'routes-json',
+            title: 'Routes JSON',
+            body: (
+              <>
+                <P>
+                  Self-hosted routes can be added in bulk on the listing form: <b className="font-normal text-foreground">Upload .json</b> next to the Routes header, or paste the JSON into any route path or
+                  description field (like pasting a <C>.env</C> into Vercel). Same shape as the manifest <C>routes</C>, prices as dollar strings. A whole <C>paycall.json</C> (<C>{'{ "routes": [...] }'}</C>) works too.
+                </P>
+                <Pre title="routes.json">{`
+[
+  { "method": "GET", "path": "/forecast", "price": "0.005", "description": "7 day forecast, ?city=" },
+  { "method": "POST", "path": "/summarize", "price": "0.00002", "pricing": "token", "maxAmount": "0.05" },
+  { "method": "GET", "path": "/radar", "price": "1", "pricing": "pass", "passSeconds": 86400 }
+]`}</Pre>
+                <Tbl
+                  head={['Field', 'Notes']}
+                  rows={[
+                    [<C key="c">method</C>, 'GET | POST | PUT | PATCH | DELETE (default GET).'],
+                    [<C key="c">path</C>, <>Required. Starts with <C>/</C>, <C>:param</C> segments allowed.</>],
+                    [<C key="c">price</C>, <>Dollars, e.g. <C>&quot;0.005&quot;</C>. Per call, unit or pass.</>],
+                    [<C key="c">pricing</C>, <><C>call</C> | <C>token</C> | <C>char</C> | <C>pass</C> (default <C>call</C>).</>],
+                    [<C key="c">maxAmount</C>, 'token / char: dollar cap per call, at least the price.'],
+                    [<C key="c">passSeconds</C>, 'pass: duration in seconds.'],
+                    [<><C>description</C>, <C>example</C></>, <>Optional. <C>example</C> = real path for <C>:param</C> routes.</>],
+                  ]}
+                />
+                <Ul
+                  items={[
+                    'Rows are appended. Untouched empty rows are dropped first; 50 routes max, extras are cut.',
+                    'Not JSON, wrong shape, unknown method or pricing: rejected (paste falls through as normal text).',
+                    'Prices and paths are checked when you save, like hand-typed rows.',
+                  ]}
+                />
               </>
             ),
           },
@@ -1210,6 +1265,7 @@ curl -X POST ${API}/endpoints \\
                   [<C key="c">GET /supported</C>, 'public', 'x402 kinds: paycall-prepaid on paypal:sandbox.'],
                   [<C key="c">POST /verify</C>, 'seller', <><C>{'{ x402Version, paymentPayload, paymentRequirements }'}</C> → <C>{'{ isValid, invalidReason?, payer }'}</C>. Read-only.</>],
                   [<C key="c">POST /settle</C>, 'seller', <>Same body → <C>{'{ success, errorReason?, payer, transaction, network }'}</C>.</>],
+                  [<C key="c">POST /passes/check</C>, 'seller', <><C>{'{ identity, method, url, scope }'}</C> → <C>{'{ valid, payer, expiresAt }'}</C>. Used by the middleware for <A href="/docs/guides/list-an-api#self-hosted">time passes</A>.</>],
                   [<C key="c">GET /channels/:pubkey/:sellerId</C>, 'public', <><C>{'{ channelId, seq, cumulative }'}</C> or 404 <C>no_channel</C>.</>],
                   [<C key="c">GET /.well-known/jwks.json</C>, 'public', 'Receipt signing keys.'],
                   [<C key="c">ANY /p/:endpointId/*</C>, 'x402', 'The paid proxy.'],
