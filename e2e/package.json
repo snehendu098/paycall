@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "paycall-sdk": "file:../paycall-sdk"
+    "@paycall-live/sdk": "^0.1.0"
   }
 }

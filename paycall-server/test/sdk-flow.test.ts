@@ -1,7 +1,7 @@
 // needs local pg. real sdk against in-process worker: passes, metering, receipts
 import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
-import { createAgent, decodePaymentHeader, generateKey, verifyReceipt } from 'paycall-sdk'
+import { createAgent, decodePaymentHeader, generateKey, verifyReceipt } from '@paycall-live/sdk'
 import { connect } from '../src/db'
 import { agents, endpoints, owners, sellers } from '../src/db/schema'
 import worker from '../src/index'

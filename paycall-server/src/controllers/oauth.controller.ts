@@ -1,7 +1,7 @@
 import { authorizationErrorRedirect, AuthorizationError, type AuthRequest } from '@cloudflare/workers-oauth-provider'
 import { zValidator } from '@hono/zod-validator'
 import { HTTPException } from 'hono/http-exception'
-import { generateKey } from 'paycall-sdk'
+import { generateKey } from '@paycall-live/sdk'
 import { z } from 'zod'
 import { agents } from '../db/schema'
 import { factory } from '../lib/factory'

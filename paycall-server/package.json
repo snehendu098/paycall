@@ -10,11 +10,11 @@
     "@cloudflare/workers-oauth-provider": "1.2.4",
     "@hono/zod-validator": "^0.9.1",
     "@modelcontextprotocol/server": "2.4.0",
+    "@paycall-live/sdk": "^0.1.0",
     "agents": "0.33.0",
     "better-auth": "^1.7.19",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.16",
-    "paycall-sdk": "file:../paycall-sdk",
     "pg": "^8.23.1",
     "zod": "^4.6.7"
   },

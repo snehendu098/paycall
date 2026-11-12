@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { generateKey } from 'paycall-sdk'
+import { generateKey } from '@paycall-live/sdk'
 import { createAgent } from './agent'
 import { api } from './api'
 import { env } from './env'

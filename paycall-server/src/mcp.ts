@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import { createMcpHandler } from 'agents/mcp/server'
 import { and, eq, gte, sql } from 'drizzle-orm'
-import { createAgent, describeResponse, usd } from 'paycall-sdk'
+import { createAgent, describeResponse, usd } from '@paycall-live/sdk'
 import { z } from 'zod'
 import type { McpProps } from './controllers/oauth.controller'
 import { connect } from './db'
