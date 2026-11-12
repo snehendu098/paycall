@@ -107,18 +107,14 @@ export function PageSkeleton() {
 }
 
 /** Quiet square button. `primary` = light fill, else hairline. */
-export function Act({ primary, className, ...rest }: ComponentProps<'button'> & { primary?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'inline-flex h-9 shrink-0 items-center justify-center gap-2 border px-4 text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40',
-        primary ? 'border-foreground bg-foreground text-background hover:bg-[#f3efe7]' : 'border-border hover:border-foreground/50',
-        className,
-      )}
-      {...rest}
-    />
+export const act = (primary?: boolean, className?: string) =>
+  cn(
+    'inline-flex h-9 shrink-0 items-center justify-center gap-2 border px-4 text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40',
+    primary ? 'border-foreground bg-foreground text-background hover:bg-[#f3efe7]' : 'border-border hover:border-foreground/50',
+    className,
   )
+export function Act({ primary, className, ...rest }: ComponentProps<'button'> & { primary?: boolean }) {
+  return <button type="button" className={act(primary, className)} {...rest} />
 }
 
 /** Sentence-case labelled form row. */

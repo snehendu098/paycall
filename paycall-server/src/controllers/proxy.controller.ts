@@ -69,7 +69,7 @@ export const forward = factory.createHandlers(async (c) => {
   const db = c.var.db
   const id = c.req.param('endpointId')!
   const [ep] = await db.select().from(endpoints).where(eq(endpoints.id, id))
-  if (!ep) return c.json({ error: 'unknown endpoint' }, 404)
+  if (!ep || ep.mode === 'hosted') return c.json({ error: 'unknown endpoint' }, 404) // hosted: agents call seller directly
   const origin = new URL(c.req.url).origin
   const requirements = requirementsOf(ep, origin)
   const method = c.req.method

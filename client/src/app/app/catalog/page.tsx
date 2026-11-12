@@ -1,12 +1,17 @@
 'use client'
 
 import { AnimatePresence, motion } from 'motion/react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { $, API, per, type Pricing } from '@/lib/api'
+import { $, API, per, type Listing } from '@/lib/api'
 import { errMsg, Nothing, Page, Skel, Verified } from '@/components/portal'
 import { cn } from '@/lib/utils'
 
-type Listing = Pricing & { id: string; name: string; description: string | null; category: string | null; verified: boolean; seller: string; url: string }
+const href = (l: Listing) => `/app/catalog/${l.id}`
+// "from $0.005/call" for hosted (cheapest route)
+const Price = ({ l }: { l: Listing }) => <>{l.mode === 'hosted' && <span className="text-muted-foreground">from </span>}{$(l.price)}<span className="text-muted-foreground">{per(l)}</span></>
+const routesLine = (l: Listing) => l.routes && `${l.routes.length} ${l.routes.length === 1 ? 'route' : 'routes'} · ${l.routes.slice(0, 3).map((r) => `${r.method} ${r.path}`).join(', ')}${l.routes.length > 3 ? ', …' : ''}`
 
 const PRICES = [{ label: 'Any price', max: Infinity }, { label: '≤ $0.01', max: 10_000 }, { label: '≤ $0.10', max: 100_000 }, { label: '≤ $1', max: 1_000_000 }]
 const spring = { type: 'spring', stiffness: 420, damping: 32 } as const
@@ -49,17 +54,17 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   )
 }
 
-// ⌘/ palette: types into page query, ↑↓ pick, enter copies url
+// ⌘/ palette: types into page query, ↑↓ pick, enter opens listing
 function Palette({ open, onClose, q, setQ, list }: { open: boolean; onClose: () => void; q: string; setQ: (q: string) => void; list?: Listing[] }) {
   const [i, setI] = useState(0)
-  const [copied, setCopied] = useState('')
+  const router = useRouter()
   const top = (list ?? []).slice(0, 8)
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
     else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       setI((n) => (top.length ? (n + (e.key === 'ArrowDown' ? 1 : -1) + top.length) % top.length : 0))
-    } else if (e.key === 'Enter' && top[i]) copy(top[i].url).then(() => setCopied(top[i].id))
+    } else if (e.key === 'Enter' && top[i]) router.push(href(top[i]))
   }
   return (
     <AnimatePresence>
@@ -96,7 +101,7 @@ function Palette({ open, onClose, q, setQ, list }: { open: boolean; onClose: () 
                 <li
                   key={l.id}
                   onMouseEnter={() => setI(n)}
-                  onClick={() => copy(l.url).then(() => setCopied(l.id))}
+                  onClick={() => router.push(href(l))}
                   className="relative flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5"
                 >
                   {n === i && <motion.span layoutId="pal-hl" transition={spring} className="absolute inset-0 rounded-lg bg-foreground/[0.06]" />}
@@ -104,13 +109,13 @@ function Palette({ open, onClose, q, setQ, list }: { open: boolean; onClose: () 
                     <div className="flex items-center gap-2"><span className="truncate text-sm">{l.name}</span>{l.verified && <Verified />}</div>
                     <div className="truncate text-xs text-muted-foreground">{l.seller}{l.description && <> · {l.description}</>}</div>
                   </div>
-                  <span className="relative shrink-0 font-mono text-xs">{copied === l.id ? 'Copied' : <>{$(l.price)}<span className="text-muted-foreground">{per(l)}</span></>}</span>
+                  <span className="relative shrink-0 font-mono text-xs"><Price l={l} /></span>
                 </li>
               ))}
             </ul>
             <div className="flex items-center gap-4 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5"><Kbd>↑↓</Kbd> move</span>
-              <span className="flex items-center gap-1.5"><Kbd>↵</Kbd> copy URL</span>
+              <span className="flex items-center gap-1.5"><Kbd>↵</Kbd> open</span>
             </div>
           </motion.div>
         </motion.div>
@@ -185,17 +190,19 @@ export default function CatalogPage() {
         {!shown ? <Skel className="h-48" /> : shown.length === 0 ? <Nothing>{q || max < Infinity || cat ? 'No matches.' : 'Nothing listed yet.'}</Nothing> : (
           <ul className="divide-y divide-border border border-border bg-card">
             {shown.map((l) => (
-              <li key={l.id} data-testid="listing" className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-4">
+              <li key={l.id} data-testid="listing" className="relative flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-foreground/[0.02] sm:flex-row sm:items-center sm:gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-sm">{l.name}</span>
+                    {/* stretched link: whole row opens detail, copy button sits above */}
+                    <Link href={href(l)} className="truncate text-sm after:absolute after:inset-0">{l.name}</Link>
                     {l.verified && <Verified />}
                     <span className="shrink-0 text-xs text-muted-foreground/70 max-sm:hidden">by {l.seller}</span>
                   </div>
-                    {l.description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:truncate" title={l.description}>{l.description}</p>}
+                  {l.description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:truncate" title={l.description}>{l.description}</p>}
+                  {l.routes && <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground/70">{routesLine(l)}</p>}
                 </div>
-                <div className="flex shrink-0 items-center justify-between gap-4">
-                  <span className="font-mono text-sm">{$(l.price)}<span className="text-muted-foreground">{per(l)}</span></span>
+                <div className="relative flex shrink-0 items-center justify-between gap-4">
+                  <span className="font-mono text-sm"><Price l={l} /></span>
                   <CopyUrl url={l.url} />
                 </div>
               </li>

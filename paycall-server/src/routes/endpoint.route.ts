@@ -6,6 +6,8 @@ import type { AppEnv } from '../types'
 export const endpointRoute = new Hono<AppEnv>()
   .use(auth('seller'))
   .post('/', ...endpoint.create)
+  .post('/import', ...endpoint.importManifest)
+  .post('/:id/probe', ...endpoint.recheck)
   .get('/', ...endpoint.list)
   .patch('/:id', ...endpoint.update)
   .delete('/:id', ...endpoint.remove)

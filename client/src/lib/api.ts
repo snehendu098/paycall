@@ -52,3 +52,15 @@ export const dur = (s: number) => (s % 86_400 === 0 && s > 86_400 ? `${s / 86_40
 /** Suffix after `$(price)`: "/call", "/token · max $0.05", " / 1h pass". */
 export const per = (p: Pricing) =>
   p.pricing === 'pass' ? ` / ${dur(p.passSeconds ?? 0)} pass` : `/${p.pricing}${p.maxAmount != null && p.pricing !== 'call' ? ` · max ${$(p.maxAmount)}` : ''}`
+
+export type Probe = { ok: boolean; checkedAt: string; error?: string }
+/** Hosted listing route: agents call baseUrl + path directly. Price informational (middleware enforces). */
+export type Route = { method: string; path: string; price: number; pricing: Pricing['pricing']; maxAmount?: number; passSeconds?: number; description: string; example?: string; probe?: Probe }
+/** Public catalog row. hosted: url = base url, routes = live routes only. */
+export type Listing = Pricing & { id: string; name: string; description: string | null; category: string | null; verified: boolean; seller: string; mode: 'proxy' | 'hosted'; url: string; routes?: (Route & { url: string })[]; docs?: string }
+export const routePrice = (r: Route) => `${$(r.price)}${per({ maxAmount: null, passSeconds: null, ...r })}`
+/** curl for a listing: first route (example path if templated) or the paid proxy url. */
+export const exampleCall = (l: Listing) => {
+  const r = l.routes?.[0]
+  return r ? `curl -i ${r.method === 'GET' ? '' : `-X ${r.method} `}${r.example ? l.url + r.example : r.url}` : `curl -i ${l.url}`
+}

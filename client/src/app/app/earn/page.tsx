@@ -1,13 +1,14 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { $, ago, type Dispute } from '@/lib/api'
 import { enable, pc } from '@/lib/pc'
 import { Btn, Code, Input } from '@/components/ds'
 import { Activity, Disputes, LiveDot, useLedger } from '@/components/activity'
-import { Act, Block, Empty, errMsg, Field, Nothing, Num, Page, PageSkeleton, PDialog, Skel, useApi, useUser } from '@/components/portal'
-import { EndpointList, NewEndpoint, type Endpoint } from './endpoints'
+import { act, Act, Block, Empty, errMsg, Field, Nothing, Num, Page, PageSkeleton, PDialog, Skel, useApi, useUser } from '@/components/portal'
+import { EndpointList, type Endpoint } from './endpoints'
 
 type Payout = { id: string; gross: number; net: number; status: 'pending' | 'paid' | 'failed'; createdAt: string }
 type Me = { seller: { id: string; name: string; paypalEmail: string; paidOut: number; pendingPayout: number }; earned: number; refunded: number; held: number; owed: number; payouts: Payout[] }
@@ -102,7 +103,7 @@ function Earn() {
 
       <Disputes role="seller" list={disputes.data} charges={rows} onChanged={changed} />
 
-      <Block title="Endpoints" aside={<NewEndpoint onCreated={eps.reload} />}>
+      <Block title="Listings" aside={<Link href="/app/earn/new" className={act()}>New listing</Link>}>
         <EndpointList list={eps.data} reload={eps.reload} />
       </Block>
 
