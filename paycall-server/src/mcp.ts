@@ -7,7 +7,7 @@ import type { McpProps } from './controllers/oauth.controller'
 import { connect } from './db'
 import { agents, entries, owners } from './db/schema'
 import { spentToday } from './ledger'
-import { searchCatalog } from './controllers/catalog.controller'
+import { getListing, searchCatalog, type Listing } from './controllers/catalog.controller'
 
 type App = { fetch: (req: Request, env: CloudflareBindings, ctx: ExecutionContext) => Response | Promise<Response> }
 
@@ -19,6 +19,9 @@ const priceText = (r: { price: number; pricing: string; maxAmount: number | null
     : r.pricing === 'call'
       ? `${usd(r.price)}/call`
       : `${usd(r.price)}/${r.pricing}, max ${usd(r.maxAmount!)}/call`
+// proxy: one url. hosted: one line per route, direct seller url
+const urls = (l: Listing) =>
+  'routes' in l ? l.routes.map((x) => `  ${x.method} ${x.url} ${priceText({ maxAmount: null, passSeconds: null, ...x })}${x.description ? ` · ${x.description}` : ''}${x.example ? ` (e.g. ${x.example})` : ''}`).join('\n') : `  ${l.url}`
 
 function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>, env: CloudflareBindings, origin: string) {
   const s = new McpServer({ name: 'paycall', version: '0.3.0' })
@@ -45,7 +48,7 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
   s.registerTool(
     'search_paid_apis',
     {
-      description: 'Search the PayCall catalog of paid APIs (name, description, price per call, URL). Prefer ✓ verified listings (reviewed by PayCall). Call the returned URL with paid_fetch.',
+      description: 'Search the PayCall catalog of paid APIs (name, description, price, URLs). Prefer ✓ verified listings (reviewed by PayCall). Call the returned URL with paid_fetch; get_api_docs { id } for full docs.',
       inputSchema: z.object({ query: z.string().max(100).optional().describe('keywords, e.g. "weather" or "flights"; empty = newest') }),
     },
     async ({ query }) => {
@@ -53,7 +56,24 @@ function server(props: McpProps, agent: Awaited<ReturnType<typeof createAgent>>,
       try {
         const rows = await searchCatalog(db, origin, query)
         if (!rows.length) return text(`no paid APIs match "${query ?? ''}"`)
-        return text(rows.map((r) => `${r.verified ? '✓ verified · ' : ''}${r.name} (${r.seller}) ${priceText(r)}${r.category ? ` [${r.category}]` : ''}\n  ${r.url}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
+        return text(rows.map((r) => `${r.verified ? '✓ verified · ' : ''}${r.name} (${r.seller}) ${'routes' in r ? `${r.routes.length} routes from ` : ''}${priceText(r)}${r.category ? ` [${r.category}]` : ''} id=${r.id}\n${urls(r)}${r.description ? `\n  ${r.description}` : ''}`).join('\n'))
+      } finally {
+        await close()
+      }
+    },
+  )
+
+  s.registerTool(
+    'get_api_docs',
+    { description: 'Full docs (markdown) + routes/prices of one catalog listing. id from search_paid_apis.', inputSchema: z.object({ id: z.string().max(64) }) },
+    async ({ id }) => {
+      const { db, close } = await connect(env.HYPERDRIVE.connectionString)
+      try {
+        const l = await getListing(db, origin, id)
+        if (!l) return text(`no listing ${id}`, true)
+        const head = `${l.verified ? '✓ verified · ' : ''}${l.name} (${l.seller})${l.description ? ` — ${l.description}` : ''}\n${'routes' in l ? 'routes (call directly with paid_fetch):' : `${priceText(l)}:`}\n${urls(l)}`
+        const out = `${head}\n\n${l.docs || '(no docs)'}`
+        return text(out.length > 20_000 ? `${out.slice(0, 20_000)}\n…(truncated)` : out)
       } finally {
         await close()
       }

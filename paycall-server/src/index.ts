@@ -13,7 +13,7 @@ import { adminRoute } from './routes/admin.route'
 import { disputeRoute } from './routes/dispute.route'
 import { agentRoute } from './routes/agent.route'
 import { approvalRoute } from './routes/approval.route'
-import { search as catalog } from './controllers/catalog.controller'
+import { get as catalogGet, search as catalog } from './controllers/catalog.controller'
 import { channelRoute } from './routes/channel.route'
 import { deviceRoute } from './routes/device.route'
 import { endpointRoute } from './routes/endpoint.route'
@@ -58,6 +58,7 @@ const app = new Hono<AppEnv>()
   .route('/approvals', approvalRoute)
   .route('/disputes', disputeRoute)
   .get('/catalog', ...catalog)
+  .get('/catalog/:id', ...catalogGet)
   .get('/.well-known/jwks.json', async (c) => c.json(await jwks(c.env.BETTER_AUTH_SECRET), 200, { 'cache-control': 'public, max-age=3600' }))
   .route('/p', proxyRoute)
   .route('/demo', demo)
