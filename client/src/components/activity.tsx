@@ -50,8 +50,7 @@ export function useLedger(role: Role, onEvent?: (e: Entry) => void) {
 /** "● Live" dot for section asides. */
 export function LiveDot({ live }: { live: boolean }) {
   return (
-    <span className={cn('inline-flex items-center gap-2 text-xs text-muted-foreground', live && 'text-live')}>
-      <span aria-hidden className={cn('size-1.5 rounded-full', live ? 'pc-pulse bg-live' : 'bg-muted-foreground/50')} />
+    <span className={cn('text-xs text-muted-foreground', live && 'text-live')}>
       {live ? 'Live' : 'Connecting'}
     </span>
   )
@@ -260,6 +259,7 @@ function stage(d: Dispute, role: Role): Stage {
   if (d.status === 'escalated') return { label: 'PayCall reviewing', tone: 'live', hint: 'PayCall makes the final call.' }
   if (d.status === 'refunded') return { label: 'Refunded', tone: 'muted', hint: d.decidedBy === 'timeout' ? "Seller didn't answer in time." : d.decidedBy === 'admin' ? 'Refunded by PayCall.' : undefined }
   if (d.decidedBy === 'admin') return { label: 'Rejected · final', tone: 'muted', hint: 'PayCall sided with the seller.' }
+  if (d.decidedBy === 'buyer') return { label: 'Resolved', tone: 'muted', hint: role === 'buyer' ? 'You marked this resolved.' : 'The buyer marked this resolved.' }
   if (!canEscalate(d)) return { label: 'Rejected', tone: 'muted' }
   const n = daysLeft(d.resolvedAt!, ESCALATE)
   return { label: 'Rejected', tone: 'default', hint: role === 'seller' ? `The buyer can escalate to PayCall for ${n}d.` : `Disagree? Escalate to PayCall once, ${n}d left.` }
@@ -312,8 +312,11 @@ export function Disputes({ role, list, charges, onChanged }: { role: Role; list?
                 <Act disabled={busy === d.id} onClick={() => setRejecting(d)}>Reject</Act>
                 <Act primary disabled={busy === d.id} onClick={() => act(d, String(d.id), { action: 'refund' }, `Refunded ${$(d.amount)}`)}>Refund</Act>
               </div>
-            ) : role === 'buyer' && canEscalate(d) ? (
-              <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review')}>Escalate</Act>
+            ) : role === 'buyer' && (d.status === 'open' || canEscalate(d)) ? (
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/close`, undefined, 'Marked as resolved')}>Mark as resolved</Act>
+                {canEscalate(d) && <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review')}>Escalate</Act>}
+              </div>
             ) : null
           return (
             <li key={d.id} className="flex flex-col gap-3 border-b border-border py-5 last:border-b-0">

@@ -20,7 +20,6 @@ export default function AdminPage() {
       <StatTiles s={stats.data} />
       <Queue list={queue.data} onChanged={() => { queue.reload(); stats.reload() }} />
       <Listings list={eps.data} reload={eps.reload} />
-      <Settle onDone={stats.reload} />
     </Page>
   )
 }
@@ -144,38 +143,6 @@ function Listings({ list, reload }: { list?: Listing[]; reload: () => void }) {
           ))}
         </ul>
       )}
-    </Block>
-  )
-}
-
-function Settle({ onDone }: { onDone: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  async function run() {
-    setBusy(true)
-    try {
-      const r = await pc<{ batchId: string | null }>('admin', 'settle-now', { method: 'POST' })
-      toast.success(r.batchId ? `Payout batch ${r.batchId} sent` : 'Nothing due')
-      setOpen(false)
-      onDone()
-    } catch (e) {
-      toast.error('Settlement failed', { description: errMsg(e) })
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Block title="Settlement">
-      <div className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">Cron runs every 10 min: expires disputes, then pays sellers owed ≥ $0.50 via PayPal.</p>
-        <Act onClick={() => setOpen(true)}>Run settlement now</Act>
-      </div>
-      <PDialog open={open} onOpenChange={(o) => !busy && setOpen(o)} title="Run settlement now?" description="Sends a real PayPal payouts batch to every seller owed ≥ $0.50.">
-        <div className="flex justify-end gap-2">
-          <Act onClick={() => setOpen(false)} disabled={busy}>Cancel</Act>
-          <Act primary onClick={run} disabled={busy}>{busy ? 'Running…' : 'Run now'}</Act>
-        </div>
-      </PDialog>
     </Block>
   )
 }
