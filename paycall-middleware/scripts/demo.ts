@@ -114,6 +114,21 @@ for (const [path, cap] of [['/', 20000], ['/hd', 50000]] as const) {
 }
 console.log('ok metered: dynamic cap 0.02/0.05 signed, 0.003 kept, rest refunded')
 
+// time pass: pay once, then signed identity rides free
+const passSrv = Bun.serve({ port: 8815, fetch: withPaycall(() => Response.json({ hello: 'pass' }), { ...opts, pass: { seconds: 60 } }) })
+const pBefore = await balance()
+for (let i = 0; i < 3; i++) {
+  const r = await agent.fetch('http://localhost:8815/')
+  assert.equal(r.status, 200)
+  const pay = decodePaymentHeader(r.headers.get('payment-response'))
+  assert.ok(pay.pass.expiresAt)
+  assert.equal(!!pay.transaction, i === 0)
+  await r.body?.cancel()
+}
+assert.equal(await balance(), pBefore - 10000)
+console.log('ok pass: paid once, 2 free calls on identity')
+passSrv.stop()
+
 web.stop()
 hono.stop()
 exSrv.close()

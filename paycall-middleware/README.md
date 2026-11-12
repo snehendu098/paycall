@@ -86,6 +86,18 @@ withPaycall(async (req) => {
 
 The PayCall proxy does this automatically for `token` / `char` endpoints, including SSE streams (counted as they flow, cut at the cap, signed receipt in a final `event: paycall-receipt`).
 
+## Time pass
+
+One payment buys `seconds` of free calls (max 30 days). Scope defaults to the URL path; set `scope` to share one pass across paths.
+
+```ts
+withPaycall(handler, { ...opts, price: '0.50', pass: { seconds: 3600, scope: 'all' } })
+```
+
+- `402` advertises `extra.pass`. The SDK then retries with a signed `PAYCALL-AGENT` identity header; a live pass → your handler runs, no charge, `PAYMENT-RESPONSE` = `{ success, payer, pass: { expiresAt } }` (no `transaction`).
+- Paid call extends the pass; its `PAYMENT-RESPONSE` includes `pass.expiresAt`.
+- Identity is signed over method + full URL, single use. Behind a proxy, `req.url` must be the URL the buyer called (Express: set `trust proxy`).
+
 ## Receipts, refunds, disputes
 
 - `PAYMENT-RESPONSE` carries `receipt`: an EdDSA JWS. Verify with `verifyReceipt(jws)` from `@paycall-live/sdk` (keys at `{facilitator}/.well-known/jwks.json`).
