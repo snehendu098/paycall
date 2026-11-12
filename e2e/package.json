@@ -1,5 +1,6 @@
 {
   "name": "e2e",
+  "license": "MIT",
   "module": "index.ts",
   "type": "module",
   "private": true,
