@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { $, ago, short, toDollars, toMicros, type Dispute, type Entry } from '@/lib/api'
 import { events, pc, type Role } from '@/lib/pc'
-import { Badge, Input } from '@/components/ds'
+import { Input } from '@/components/ds'
 import { Act, Block, ease, errMsg, Field, Nothing, PDialog, Skel } from '@/components/portal'
 
 const TYPES = ['topup', 'reload', 'charge', 'refund', 'payout', 'fee'] as const
@@ -250,25 +250,21 @@ const live = (d: Dispute) => d.status === 'open' || d.status === 'escalated'
 const canEscalate = (d: Dispute) => d.status === 'rejected' && d.decidedBy === 'seller' && !!d.resolvedAt && Date.now() - +new Date(d.resolvedAt) < ESCALATE
 
 type Stage = { label: string; tone: 'live' | 'muted' | 'default'; hint?: string }
-// where it stands + what happens next, from the viewer's side
+// where it stands + what's next, short, from the viewer's side
 function stage(d: Dispute, role: Role): Stage {
   if (d.status === 'open') {
     const n = daysLeft(d.createdAt, RESPOND)
-    return { label: 'Open', tone: 'live', hint: role === 'seller' ? `Refund or reject within ${n}d, or it refunds automatically.` : `Waiting on the seller. Refunds automatically in ${n}d if they don't answer.` }
+    return { label: 'Open', tone: 'live', hint: role === 'seller' ? `answer within ${n}d or it auto-refunds` : `auto-refunds in ${n}d if the seller doesn't answer` }
   }
-  if (d.status === 'escalated') return { label: 'PayCall reviewing', tone: 'live', hint: 'PayCall makes the final call.' }
-  if (d.status === 'refunded') return { label: 'Refunded', tone: 'muted', hint: d.decidedBy === 'timeout' ? "Seller didn't answer in time." : d.decidedBy === 'admin' ? 'Refunded by PayCall.' : undefined }
-  if (d.decidedBy === 'admin') return { label: 'Rejected · final', tone: 'muted', hint: 'PayCall sided with the seller.' }
-  if (d.decidedBy === 'buyer') return { label: 'Resolved', tone: 'muted', hint: role === 'buyer' ? 'You marked this resolved.' : 'The buyer marked this resolved.' }
+  if (d.status === 'escalated') return { label: 'Under review', tone: 'live', hint: 'PayCall decides' }
+  if (d.status === 'refunded') return { label: 'Refunded', tone: 'muted', hint: d.decidedBy === 'timeout' ? "seller didn't answer" : d.decidedBy === 'admin' ? 'by PayCall' : undefined }
+  if (d.decidedBy === 'admin') return { label: 'Rejected', tone: 'muted', hint: 'final, by PayCall' }
+  if (d.decidedBy === 'buyer') return { label: 'Resolved', tone: 'muted', hint: role === 'buyer' ? 'by you' : 'by the buyer' }
   if (!canEscalate(d)) return { label: 'Rejected', tone: 'muted' }
   const n = daysLeft(d.resolvedAt!, ESCALATE)
-  return { label: 'Rejected', tone: 'default', hint: role === 'seller' ? `The buyer can escalate to PayCall for ${n}d.` : `Disagree? Escalate to PayCall once, ${n}d left.` }
+  return { label: 'Rejected', tone: 'default', hint: role === 'seller' ? `buyer can escalate for ${n}d` : `escalate within ${n}d` }
 }
-const Quote = ({ who, text }: { who: string; text: string }) => (
-  <p className="border-l border-border pl-3 text-[13px] leading-relaxed text-muted-foreground">
-    <span className="text-foreground/70">{who}</span> {text}
-  </p>
-)
+const toneText = { live: 'text-live', default: 'text-foreground', muted: 'text-muted-foreground' } as const
 // listing name for a dispute: from the ledger row, else the url path
 const titleOf = (d: Dispute, charges?: Entry[]) =>
   charges?.find((e) => Number(e.id) === d.entryId)?.endpoint ?? (d.resource ? new URL(d.resource, 'https://x').pathname.split('/').filter(Boolean).slice(2).join('/') || 'Charge' : 'Charge')
@@ -306,41 +302,35 @@ export function Disputes({ role, list, charges, onChanged }: { role: Role; list?
       <ul className="border-t border-border" data-testid="disputes">
         {sorted.map((d) => {
           const st = stage(d, role)
-          const action =
-            role === 'seller' && d.status === 'open' ? (
-              <div className="grid grid-cols-2 gap-2 sm:flex">
-                <Act disabled={busy === d.id} onClick={() => setRejecting(d)}>Reject</Act>
-                <Act primary disabled={busy === d.id} onClick={() => act(d, String(d.id), { action: 'refund' }, `Refunded ${$(d.amount)}`)}>Refund</Act>
-              </div>
-            ) : role === 'buyer' && (d.status === 'open' || canEscalate(d)) ? (
-              <div className="grid grid-cols-2 gap-2 sm:flex">
-                <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/close`, undefined, 'Marked as resolved')}>Mark as resolved</Act>
-                {canEscalate(d) && <Act disabled={busy === d.id} onClick={() => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review')}>Escalate</Act>}
-              </div>
-            ) : null
+          const link = (label: string, run: () => void, cls?: string) => (
+            <button type="button" disabled={busy === d.id} onClick={run} className={cn(quiet, 'disabled:opacity-50', cls)}>{label}</button>
+          )
+          const actions =
+            role === 'seller' && d.status === 'open'
+              ? [link('Reject', () => setRejecting(d)), link('Refund', () => act(d, String(d.id), { action: 'refund' }, `Refunded ${$(d.amount)}`), 'text-foreground')]
+              : role === 'buyer' && (d.status === 'open' || canEscalate(d))
+                ? [link('Mark as resolved', () => act(d, `${d.id}/close`, undefined, 'Marked as resolved')), canEscalate(d) && link('Escalate', () => act(d, `${d.id}/escalate`, undefined, 'Sent to PayCall for review'), 'text-foreground')]
+                : []
+          const quotes = [
+            [role === 'buyer' ? 'You' : 'Buyer', d.reason],
+            d.reply && [role === 'seller' ? 'You' : 'Seller', d.reply],
+            d.adminNote && ['PayCall', d.adminNote],
+          ].filter(Boolean) as [string, string][]
           return (
-            <li key={d.id} className="flex flex-col gap-3 border-b border-border py-5 last:border-b-0">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="truncate text-[15px]" title={d.resource ?? undefined}>{titleOf(d, charges)}</div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground" suppressHydrationWarning>
-                    <Badge tone={st.tone}>{st.label}</Badge>
-                    <span>opened {ago(d.createdAt)}</span>
-                  </div>
+            <li key={d.id} className="flex flex-col gap-3 border-b border-border py-4 last:border-b-0 sm:flex-row sm:justify-between sm:gap-8">
+              <div className="min-w-0">
+                <div className="truncate text-sm" title={d.resource ?? undefined}>{titleOf(d, charges)}</div>
+                <div className="mt-1 text-xs text-muted-foreground" suppressHydrationWarning>
+                  <span className={toneText[st.tone]}>{st.label}</span> · {ago(d.createdAt)}{st.hint && <> · {st.hint}</>}
                 </div>
-                <span className="shrink-0 font-mono text-sm tabular-nums">{$(d.amount)}</span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Quote who={role === 'buyer' ? 'You:' : 'Buyer:'} text={`“${d.reason}”`} />
-                {d.reply && <Quote who={role === 'seller' ? 'You:' : 'Seller:'} text={`“${d.reply}”`} />}
-                {d.adminNote && <Quote who="PayCall:" text={`“${d.adminNote}”`} />}
-              </div>
-              {(st.hint || action) && (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  {st.hint ? <p className="text-[13px] text-muted-foreground" suppressHydrationWarning>{st.hint}</p> : <span />}
-                  {action}
+                <div className="mt-2 flex flex-col gap-0.5 text-[13px] leading-relaxed text-muted-foreground">
+                  {quotes.map(([who, text]) => <p key={who} className="break-words"><span className="text-foreground/60">{who}:</span> “{text}”</p>)}
                 </div>
-              )}
+              </div>
+              <div className="flex shrink-0 items-baseline justify-between gap-5 sm:flex-col sm:items-end sm:justify-start sm:gap-2">
+                <span className="font-mono text-sm tabular-nums">{$(d.amount)}</span>
+                {actions.some(Boolean) && <div className="flex gap-4">{actions.filter(Boolean).map((x, i) => <span key={i}>{x}</span>)}</div>}
+              </div>
             </li>
           )
         })}
