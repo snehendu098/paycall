@@ -74,7 +74,7 @@ const WHY: Record<string, string> = {
   not_escalatable: 'Can only escalate a seller rejection, once, within 3 days',
 }
 const why = (e: unknown) => WHY[errMsg(e)] ?? errMsg(e)
-const quiet = 'text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground'
+export const quiet = 'text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground'
 // sign from the viewer's side
 const sign = (role: Role, t: Entry['type']) => (role === 'buyer' ? (t === 'charge' ? -1 : 1) : t === 'charge' ? 1 : -1)
 
@@ -266,8 +266,8 @@ function stage(d: Dispute, role: Role): Stage {
 }
 const toneText = { live: 'text-live', default: 'text-foreground', muted: 'text-muted-foreground' } as const
 // listing name for a dispute: from the ledger row, else the url path
-const titleOf = (d: Dispute, charges?: Entry[]) =>
-  charges?.find((e) => Number(e.id) === d.entryId)?.endpoint ?? (d.resource ? new URL(d.resource, 'https://x').pathname.split('/').filter(Boolean).slice(2).join('/') || 'Charge' : 'Charge')
+export const pathOf = (r: string | null) => (r && new URL(r, 'https://x').pathname.split('/').filter(Boolean).slice(2).join('/')) || 'Charge'
+const titleOf = (d: Dispute, charges?: Entry[]) => charges?.find((e) => Number(e.id) === d.entryId)?.endpoint ?? pathOf(d.resource)
 
 /** Disputes, actionable first. Seller refunds or rejects (with reason); buyer can escalate a reject to PayCall once. Hidden when none. */
 export function Disputes({ role, list, charges, onChanged }: { role: Role; list?: Dispute[]; charges?: Entry[]; onChanged: () => void }) {
