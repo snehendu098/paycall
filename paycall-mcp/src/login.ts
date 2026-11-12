@@ -9,7 +9,7 @@ export const KEY_FILE = process.env.PAYCALL_KEY_FILE ?? join(homedir(), '.config
 
 type Saved = { privateKey: string; pubkey: string; name: string }
 
-// key file (from login) wins over legacy PAYCALL_AGENT_KEY env → re-login switches wallet w/o editing mcp config
+// login key file beats legacy PAYCALL_AGENT_KEY env → re-login switches wallet, no mcp config edit
 export async function loadKey(): Promise<string | undefined> {
   const saved = await readFile(KEY_FILE, 'utf8').then((s) => JSON.parse(s) as Saved, () => undefined)
   return saved?.privateKey ?? process.env.PAYCALL_AGENT_KEY
@@ -21,7 +21,7 @@ async function savedPubkey() {
 
 export type Started = { userCode: string; verificationUri: string; done: Promise<'approved' | 'expired'> }
 
-/** Device login: key made here, only pubkey sent; user types userCode at verificationUri to approve. */
+/** Device login: key made locally, only pubkey sent; user approves userCode at verificationUri. */
 export async function login(name = `${hostname().split('.')[0]}-agent`): Promise<Started> {
   const kp = await generateKey()
   const res = await fetch(`${API}/device`, {

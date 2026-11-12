@@ -10,7 +10,7 @@ import { Act, errMsg, Field, Page, PageSkeleton, useUser } from '@/components/po
 type Pending = { userCode: string; name: string; pubkey: string; replaces: string | null; expiresAt: string }
 const PRICE = /^\d+(\.\d{1,6})?$/
 
-// code typed by hand on purpose: a prefilled link could carry an attacker's key (rfc 8628 §5.4)
+// code typed by hand on purpose: prefilled link could carry attacker's key (rfc 8628 §5.4)
 export default function Connect() {
   const { user, pending, refetch } = useUser()
   const [code, setCode] = useState('')

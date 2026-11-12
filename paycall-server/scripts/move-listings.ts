@@ -1,5 +1,5 @@
-// one-off: move the seeded listings (Channel3, PayCall Labs) under a dashboard user's own seller account.
-// past earnings/ledger stay on the old sellers; new calls pay the target seller (new channel per agent).
+// one-off: move seeded listings (Channel3, PayCall Labs) under dashboard user's seller account
+// past earnings/ledger stay on old sellers; new calls pay target seller (new channel per agent)
 // usage: bun --env-file=.env scripts/move-listings.ts <login email>
 import pg from 'pg'
 

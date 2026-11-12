@@ -24,7 +24,7 @@ export function AuthForm({ signup }: { signup?: boolean }) {
   const [errs, setErrs] = useState<Errs>({})
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<{ email: string; name: string } | null>(null)
-  // already signed in (valid session, not just a cookie) → skip the form
+  // already signed in (valid session, not just cookie) → skip form
   const session = authClient.useSession()
   useEffect(() => {
     if (session.data) router.replace(dest(!!signup))

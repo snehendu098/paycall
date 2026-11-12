@@ -16,7 +16,7 @@ import { Table as STable, TableBody, TableCell, TableHead, TableHeader, TableRow
 const MLink = motion.create(Link)
 const mono = 'font-mono text-[11px] uppercase tracking-wider text-muted-foreground'
 
-/** `+` crosshair mark centered on its position (place inside a relative parent). */
+/** `+` crosshair mark centered on its position (needs relative parent). */
 export function Cross({ className }: { className?: string }) {
   return (
     <span aria-hidden className={cn('pointer-events-none absolute z-10 size-[11px] -translate-1/2', className)}>
@@ -118,7 +118,7 @@ type BtnProps = {
   className?: string
 } & Omit<HTMLMotionProps<'button'>, 'children' | 'className'>
 
-/** Square button on shadcn Button. primary = filled label + `+` cell in outline box; `href` renders a Link. */
+/** Square shadcn Button. primary = filled label + `+` cell; `href` → Link. */
 export function Btn({ children, variant = 'primary', size = 'md', href, className, disabled, type = 'button', ...rest }: BtnProps) {
   const h = size === 'sm' ? 'h-8 text-[13px]' : 'h-11 text-sm'
   const inner =

@@ -27,7 +27,7 @@ export const pad = 'px-4 sm:px-6 md:px-10 lg:px-12'
 export const mono = 'font-mono text-[11px] uppercase tracking-wider text-muted-foreground'
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-// ---------- data ----------
+// data
 
 /** GET via BFF; `reload` refetches without blanking. `enabled=false` → idle. */
 export function useApi<T>(role: Role | 'admin', path: string, enabled = true) {
@@ -46,7 +46,7 @@ export const useUser = () => {
   return { user: s.data?.user, pending: s.isPending, refetch: s.refetch }
 }
 
-// ---------- layout ----------
+// layout
 
 /** Centered content column, fades in on mount. */
 export function Page({ children, className }: { children: ReactNode; className?: string }) {
@@ -132,7 +132,7 @@ export function Field({ label, id, hint, error, children }: { label: ReactNode; 
   )
 }
 
-// ---------- numbers ----------
+// numbers
 
 /** Money (micros) that counts up from 0 on mount and tweens on change. */
 export function Num({ value, className }: { value: number; className?: string }) {
@@ -150,7 +150,7 @@ export function Num({ value, className }: { value: number; className?: string })
   return <motion.span className={cn('tabular-nums', className)}>{text}</motion.span>
 }
 
-// ---------- dialog ----------
+// dialog
 
 /** shadcn Dialog: title, body. `locked` blocks esc / outside / close. */
 export function PDialog({
@@ -208,7 +208,7 @@ export function PDialog({
   )
 }
 
-// ---------- nav ----------
+// nav
 
 const tabs = [
   { href: '/app/spend', label: 'Spend' },
@@ -279,7 +279,7 @@ export function PortalNav() {
   )
 }
 
-// ---------- auth brand moment ----------
+// auth brand moment
 
 /** Compact agent → PayCall → API schematic with a looping packet. */
 export function MiniFlow() {

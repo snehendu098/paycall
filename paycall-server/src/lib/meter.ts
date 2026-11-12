@@ -24,10 +24,10 @@ export function countBody(body: string, unit: Unit) {
   return estTokens(body.length)
 }
 
-// sse passthrough: counts text as it flows, stops forwarding once cost hits max.
-// onEnd(units) runs once, on upstream end, cut, or client abort; its return is appended as a final sse event.
-// pull-based source (not TransformStream): source cancel() reliably fires when the client disconnects, so the
-// unused cap still gets refunded (x402 upto: settle what was measured). caller keeps onEnd alive via waitUntil
+// sse passthrough: counts text as it flows, stops once cost hits max
+// onEnd(units) runs once on upstream end, cut, or client abort; return appended as final sse event
+// pull-based source (not TransformStream): cancel() reliably fires on client disconnect → unused cap
+// still refunded (x402 upto: settle what was measured). caller keeps onEnd alive via waitUntil
 export function meterStream(body: ReadableStream<Uint8Array>, unit: Unit, rate: number, max: number, onEnd: (units: number, cut: boolean) => Promise<string | void>) {
   const reader = body.getReader()
   const dec = new TextDecoder()
@@ -46,7 +46,7 @@ export function meterStream(body: ReadableStream<Uint8Array>, unit: Unit, rate: 
   }
   return new ReadableStream<Uint8Array>({
     async pull(ctl) {
-      // loop until something is enqueued: a pull that enqueues nothing may not be called again
+      // loop until enqueued: pull that enqueues nothing may not be called again
       for (;;) {
         const { done, value } = await reader.read()
         if (done) {
@@ -83,7 +83,7 @@ export function meterStream(body: ReadableStream<Uint8Array>, unit: Unit, rate: 
     },
     async cancel(reason) {
       reader.cancel(reason).catch(() => {})
-      await finish() // client went away: still charge only what was streamed
+      await finish() // client gone: charge only what streamed
     },
   })
 }

@@ -4,9 +4,9 @@
 import type { MiddlewareHandler } from 'hono'
 import type { RequestHandler } from 'express'
 
-// price: fixed "0.01", or per request (dynamic pricing) e.g. (req) => req.url.includes('/hd') ? '0.05' : '0.01'
-// metered: price is the cap the agent signs; handler sets `x-paycall-charge: <usd>` with what it actually used,
-// the rest is refunded right after settle
+// price: fixed "0.01" or per request, e.g. (req) => req.url.includes('/hd') ? '0.05' : '0.01'
+// metered: price = signed cap; handler sets `x-paycall-charge: <usd>` = actual use,
+// rest refunded after settle
 export type PaycallOptions = { apiKey: string; price: string | ((req: Request) => string | Promise<string>); metered?: boolean; facilitator?: string }
 type Settle = (res: Response) => Promise<{ ok: true; header: string } | { ok: false; res: Response }>
 export const CHARGE_HEADER = 'x-paycall-charge'
@@ -75,7 +75,7 @@ export function paycall({ apiKey, price, metered = false, facilitator = 'https:/
       const used = res.headers.get(CHARGE_HEADER)
       if (metered && used !== null) {
         charged = Math.min(amount, Math.max(0, Math.round(Number(used) * 1e6) || 0))
-        // ponytail: refund failure leaves buyer charged the cap; seller can refund from Earn later
+        // ponytail: refund fail → buyer charged cap; seller refunds from Earn later
         if (charged < amount) await call(`/entries/${r.transaction}/refund`, JSON.stringify({ amount: amount - charged })).catch(() => {})
       }
       return { ok: true, header: b64json({ success: true, payer: r.payer, transaction: r.transaction, network: r.network, amount: String(charged) }) }
@@ -121,9 +121,9 @@ export function paycallHono(opts: PaycallOptions): MiddlewareHandler {
   }
 }
 
-// settle hooked into res.end: res.send/json haven't flushed headers yet → can still swap in 402.
-// ponytail: streamed responses (res.write before end) already sent headers+body → settle failure only logged,
-// seller unpaid, buyer not charged. buffer the response if that matters.
+// settle hooked into res.end: res.send/json headers not flushed yet → can still swap in 402
+// ponytail: streamed (res.write before end) already sent headers+body → settle fail only logged,
+// seller unpaid, buyer not charged. buffer response if that matters
 export function paycallExpress(opts: PaycallOptions): RequestHandler {
   const gate = paycall(opts)
   return async (req, res, next) => {
