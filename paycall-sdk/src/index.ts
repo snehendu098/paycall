@@ -24,7 +24,7 @@ export function decodePaymentHeader<T = any>(h: string | null | undefined): T | 
   } catch {}
 }
 
-// sub-cent prices are normal: up to 6 decimals, at least 2
+// sub-cent ok: ≤6 decimals, ≥2
 export const usd = (m: number) => `$${(m / 1e6).toFixed(6).replace(/(\.\d\d\d*?)0+$/, '$1')}`
 const REASONS: Record<string, string> = {
   insufficient_funds: 'insufficient balance: top up in the PayCall dashboard',
@@ -49,7 +49,7 @@ export async function describeResponse(res: Response, opts: { reasons?: Record<s
   }
   const lines = [`HTTP ${res.status}`]
   const b = await res.text()
-  // metered sse: final charge arrives as a trailing event, header only has the cap
+  // metered sse: final charge in trailing event, header only has cap
   const trailer = b.match(/event: paycall-receipt\ndata: (.+)/)?.[1]
   const paid = (trailer && JSON.parse(trailer)) || decodePaymentHeader(res.headers.get('payment-response'))
   if (paid?.pass && !paid.transaction) lines.push(`free: time pass active until ${paid.pass.expiresAt}`)
@@ -65,7 +65,7 @@ export async function describeResponse(res: Response, opts: { reasons?: Record<s
   return { text: lines.join('\n'), isError: !res.ok }
 }
 
-// signed receipt (compact JWS, EdDSA) from PAYMENT-RESPONSE.receipt → payload if valid for that facilitator's jwks
+// signed receipt (compact JWS, EdDSA) from PAYMENT-RESPONSE.receipt → payload if valid vs facilitator jwks
 export async function verifyReceipt(jws: string, opts: { jwksUrl?: string; fetch?: typeof fetch } = {}) {
   const [h, p, sig] = jws.split('.')
   if (!h || !p || !sig) return
@@ -97,10 +97,10 @@ export async function createAgent(privateKey: string, opts: { fetch?: typeof fet
   const passOrigins = new Set<string>() // servers that sell time passes → send identity so held passes ride free
   let spent = 0
 
-  // PAYCALL-AGENT: proves this agent holds a pass, no payment
+  // PAYCALL-AGENT: proves agent holds pass, no payment
   async function identity(method: string, url: string) {
     const ts = Math.floor(Date.now() / 1000)
-    const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer) // single-use: server rejects a replayed header
+    const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer) // single-use: server rejects replay
     const sig = await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(`paycall-agent:${ts}:${nonce}:${method.toUpperCase()}:${url}`))
     return `${pubkey}.${ts}.${nonce}.${b64url(sig)}`
   }
@@ -136,7 +136,7 @@ export async function createAgent(privateKey: string, opts: { fetch?: typeof fet
       const res = await send(h)
       if (res.ok) {
         channels.set(ck, { id: ch.id, seq: ch.seq + 1, cumulative: ch.cumulative + amount })
-        // fixed price: amount. metered: header says what was kept (stream: final amount in trailing sse event)
+        // fixed: amount. metered: header = what was kept (stream: final amount in trailing sse event)
         const paid = decodePaymentHeader(res.headers.get('payment-response'))
         spent += paid?.metered ? amount : Number(paid?.amount ?? amount)
         return res
@@ -164,7 +164,7 @@ export async function createAgent(privateKey: string, opts: { fetch?: typeof fet
     if (!req) return res
     await res.body?.cancel()
     if (req.extra?.pass && !passOrigins.has(origin)) {
-      // maybe we already hold a pass: retry with identity before paying
+      // maybe pass held: retry w/ identity before paying
       passOrigins.add(origin)
       headers = await withId()
       res = await send(headers)

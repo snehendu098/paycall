@@ -18,7 +18,7 @@ const owner = `own_demo_${crypto.randomUUID()}`
 await sql(`insert into owners (id, email, api_key_hash, balance) values ('${owner}', '${owner}@x.dev', '${owner}', 1000000)`)
 await sql(`insert into agents (pubkey, owner_id, name) values ('${key.pubkey}', '${owner}', 'demo')`)
 const balance = async () => Number(await sql(`select balance from owners where id='${owner}'`))
-const drain = () => sql(`update owners set balance = 0 where id='${owner}'`) // makes settle fail after verify passed
+const drain = () => sql(`update owners set balance = 0 where id='${owner}'`) // settle fails after verify
 
 const opts = { apiKey: seller.apiKey, price: '0.01', facilitator }
 
@@ -92,7 +92,7 @@ for (const [name, base] of [['web', 'http://localhost:8811'], ['hono', 'http://l
 assert.equal(await balance(), 1000000 - 6 * 10000)
 console.log(`ok total: balance ${await balance()} (60000 charged), agent.spent ${agent.spent}`)
 
-// dynamic price + metering: cap depends on path, handler reports actual use, rest refunded
+// dynamic price + metering: cap per path, handler reports use, rest refunded
 const metered = Bun.serve({
   port: 8814,
   fetch: withPaycall(
