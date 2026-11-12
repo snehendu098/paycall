@@ -1,7 +1,7 @@
 // docs content as typed data. one page = intro + h2 sections; sidebar, toc, search derive from this
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { Code, Table } from '@/components/ds'
+import { Code } from '@/components/ds'
 import { cn } from '@/lib/utils'
 
 export type Section = { id: string; title: string; body: ReactNode }
@@ -15,7 +15,7 @@ const STORY = `${API}/p/ep_eJptj7Zcr33BGpYV/story`
 
 const P = ({ children }: { children: ReactNode }) => <p className="text-[15px] leading-7 text-foreground/80">{children}</p>
 const C = ({ children }: { children: ReactNode }) => (
-  <code className="break-words border border-border bg-card px-1 py-px font-mono text-[0.84em] text-foreground">{children}</code>
+  <code className="break-words box-decoration-clone border border-border bg-card px-1 py-px font-mono text-[0.84em] text-foreground">{children}</code>
 )
 const A = ({ href, children }: { href: string; children: ReactNode }) => {
   const cls = 'text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors hover:decoration-foreground'
@@ -45,9 +45,37 @@ const Pre = ({ children, title }: { children: string; title?: string }) => (
 const Note = ({ children, tone = 'note' }: { children: ReactNode; tone?: 'note' | 'warn' }) => (
   <div className={cn('border-l-2 bg-card px-4 py-3 text-sm leading-6 text-foreground/80', tone === 'warn' ? 'border-destructive/70' : 'border-live/70')}>{children}</div>
 )
+const th = 'font-mono text-[11px] font-normal uppercase tracking-wider text-muted-foreground'
+// server-rendered: table on sm+, stacked label/value cards on phones
 const Tbl = ({ head, rows }: { head: string[]; rows: ReactNode[][] }) => (
-  <div className="min-w-0 border border-border bg-card [&_td]:whitespace-normal [&_td]:align-top [&_td]:leading-6">
-    <Table head={head} rows={rows} />
+  <div className="min-w-0 border border-border bg-card text-sm leading-6">
+    <table className="w-full border-collapse max-sm:hidden">
+      <thead>
+        <tr className="border-b border-border">
+          {head.map((h) => <th key={h} className={cn(th, 'h-9 px-3 text-left')}>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i} className="border-b border-border last:border-b-0">
+            {r.map((c, j) => <td key={j} className={cn('px-3 py-2.5 align-top', j === 0 ? 'text-foreground' : 'text-foreground/80')}>{c}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <ul className="divide-y divide-border sm:hidden">
+      {rows.map((r, i) => (
+        <li key={i} className="flex flex-col gap-1.5 px-4 py-3">
+          <div className="text-foreground">{r[0]}</div>
+          {r.slice(1).map((c, j) => (
+            <div key={j} className="text-foreground/80">
+              <span className={cn(th, 'mr-2')}>{head[j + 1]}</span>
+              {c}
+            </div>
+          ))}
+        </li>
+      ))}
+    </ul>
   </div>
 )
 

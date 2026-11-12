@@ -6,6 +6,8 @@ import { Toc } from '../shell'
 
 type Props = PageProps<'/docs/[[...slug]]'>
 
+// every slug prerendered below; unknown slugs 404, so blocking on params is fine
+export const instant = false
 export const generateStaticParams = () => pages.map((p) => ({ slug: p.slug ? p.slug.split('/') : [] }))
 
 const get = async (params: Props['params']) => {
