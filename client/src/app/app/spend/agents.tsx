@@ -14,7 +14,6 @@ export type Agent = { pubkey: string; name: string; paused: boolean; maxPrice: n
 type Patch = Partial<Pick<Agent, 'name' | 'paused' | 'maxPrice' | 'dailyCap' | 'approveAbove' | 'allowedSellers'>>
 type Listing = { id: string; name: string; description: string | null; category: string | null; price: number; seller: string; sellerId?: string; url: string }
 
-const MCP_PATH = process.env.NEXT_PUBLIC_MCP_PATH ?? '/path/to/paycall-mcp/src/index.ts'
 const link = 'text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground'
 const PRICE = /^\d+(\.\d{1,6})?$/
 /** Agents list: name + key, inline max price, active switch. */
@@ -231,7 +230,7 @@ export function AddAgent() {
         </ol>
         <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 text-xs text-muted-foreground/80">
           <span>For SDK scripts (no browser sign-in): run this, then enter the code on the <Link href="/app/connect" onClick={() => setOpen(false)} className="text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground">connect page</Link>.</span>
-          <Code text={`bun run ${MCP_PATH} login`} className={wrap} />
+          <Code text="npx -y @paycall-live/mcp login" className={wrap} />
         </div>
       </PDialog>
     </>

@@ -133,7 +133,8 @@ function Earn() {
   )
 }
 
-const SNIPPET = `import { withPaycall } from 'paycall-middleware'
+const SNIPPET = `// npm i @paycall-live/middleware
+import { withPaycall } from '@paycall-live/middleware'
 
 export const GET = withPaycall(
   () => Response.json({ ok: true }),
@@ -162,7 +163,7 @@ function ApiKey() {
     <Block title="API key">
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4" data-testid="api-key">
         <div className="text-sm">
-          <p className="text-muted-foreground">Charge for an API on your own server. Use this key with <span className="font-mono text-foreground">paycall-middleware</span>.</p>
+          <p className="text-muted-foreground">Charge for an API on your own server. Use this key with <span className="font-mono text-foreground">@paycall-live/middleware</span>.</p>
           <p className="mt-1 text-xs text-muted-foreground">{sure ? 'Sure? Apps using the old key stop working.' : 'Generating a new key turns off the old one.'}</p>
         </div>
         <div className="flex gap-2">

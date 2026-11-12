@@ -20,7 +20,7 @@ agent ◀── 200 + PAYMENT-RESPONSE ─────────────�
 
 - **Buyers (owners)** top up with PayPal: the wallet is vaulted, with optional auto-reload. They set daily caps and a max price per agent, and can pause any agent.
 - **Agents** hold an Ed25519 key. Each call signs a cumulative voucher (`seq`, `cumulativeAmount`) on a buyer→seller channel. This is x402 v2, scheme `paycall-prepaid`, network `paypal:sandbox`.
-- **Sellers** either list any HTTPS API behind the PayCall proxy or gate their own server with `paycall-middleware`. Payouts go out through PayPal Payouts every 10 minutes once $0.50 is owed (2% fee).
+- **Sellers** either list any HTTPS API behind the PayCall proxy or gate their own server with `@paycall-live/middleware`. Payouts go out through PayPal Payouts every 10 minutes once $0.50 is owed (2% fee).
 
 ## Pricing and payment features
 
@@ -42,9 +42,9 @@ agent ◀── 200 + PAYMENT-RESPONSE ─────────────�
 |---|---|
 | [`paycall-server`](paycall-server) | Facilitator, proxy, ledger, payouts, hosted MCP (OAuth). Hono on Cloudflare Workers, Drizzle, Neon Postgres via Hyperdrive, KV. |
 | [`client`](client) | Dashboard: Spend, Earn, Catalog. Next.js 16, Better Auth (email OTP), PayPal JS SDK. |
-| [`paycall-sdk`](paycall-sdk) | Agent client. `agent.fetch` is a drop-in `fetch` that pays 402s; also has `verifyReceipt`. |
-| [`paycall-mcp`](paycall-mcp) | Local stdio MCP server (`paid_fetch`, `login`, `wallet_info`) for self-run agents. |
-| [`paycall-middleware`](paycall-middleware) | Seller middleware for web-standard handlers, Hono and Express. |
+| [`paycall-sdk`](paycall-sdk) | `@paycall-live/sdk` on npm. Agent client. `agent.fetch` is a drop-in `fetch` that pays 402s; also has `verifyReceipt`. |
+| [`paycall-mcp`](paycall-mcp) | `@paycall-live/mcp` on npm (`npx -y @paycall-live/mcp`). Local stdio MCP server (`paid_fetch`, `login`, `wallet_info`) for self-run agents. |
+| [`paycall-middleware`](paycall-middleware) | `@paycall-live/middleware` on npm. Seller middleware for web-standard handlers, Hono and Express. |
 | [`e2e`](e2e) | Playwright and end-to-end scripts. |
 
 ## Try it
@@ -60,7 +60,7 @@ That is a demo LLM stream billed per character, capped at $0.01. The reply shows
 - Or self-host:
 
 ```ts
-import { withPaycall } from 'paycall-middleware'
+import { withPaycall } from '@paycall-live/middleware'
 export const GET = withPaycall(handler, { apiKey: process.env.PAYCALL_KEY!, price: '0.01' })
 ```
 
