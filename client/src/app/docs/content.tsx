@@ -233,7 +233,7 @@ export const groups: Group[] = [
             body: (
               <>
                 <P>
-                  No code: in the dashboard open <b className="font-normal text-foreground">Earn → New endpoint</b>, give an HTTPS upstream URL, a pricing mode and optional auth
+                  No code: in the dashboard open <b className="font-normal text-foreground">Earn → New listing</b>, give an HTTPS upstream URL, a pricing mode and optional auth
                   headers (stored encrypted). You get a paid URL <C>{API}/p/&lt;id&gt;</C>. See <A href="/docs/guides/list-an-api">Listing an API</A>.
                 </P>
                 <P>Or gate your own server. Get a seller key in Earn → API key, then:</P>
@@ -955,15 +955,19 @@ withPaycall(async (req) => {
       {
         slug: 'guides/list-an-api',
         title: 'Listing an API',
-        description: 'Put a price on any HTTPS API behind the PayCall proxy. No code.',
+        description: 'Proxy any HTTPS API with no code, or list the routes of your own server running the middleware.',
         sections: [
           {
             id: 'create',
-            title: 'Create an endpoint',
+            title: 'Create a proxy listing',
             body: (
               <>
                 <P>
-                  Dashboard → <b className="font-normal text-foreground">Earn → New endpoint</b>, or <C>POST /endpoints</C> with your seller key:
+                  Two modes. <b className="font-normal text-foreground">Proxy</b>: PayCall forwards <C>/p/&lt;id&gt;/*</C> to one upstream URL at one price. <b className="font-normal text-foreground">Self-hosted</b>: your server runs the{' '}
+                  <A href="/docs/guides/middleware">middleware</A> and you list its routes, each with its own price (below).
+                </P>
+                <P>
+                  Dashboard → <b className="font-normal text-foreground">Earn → New listing</b>, or <C>POST /endpoints</C> with your seller key:
                 </P>
                 <Pre>{`
 curl -X POST ${API}/endpoints \\
@@ -993,7 +997,8 @@ curl -X POST ${API}/endpoints \\
                   [<C key="c">maxAmount</C>, 'Required for token / char: the cap per call the agent signs.'],
                   [<C key="c">passSeconds</C>, 'Required for pass: 60 s to 30 days.'],
                   [<C key="c">upstreamHeaders</C>, 'Up to 10 headers, stored encrypted, never returned. Hop-by-hop, cookie, payment-*, cf-* and x-forwarded-* are reserved.'],
-                  [<><C>name</C>, <C>description</C>, <C>category</C></>, 'Shown in the catalog and in search_paid_apis.'],
+                  [<><C>name</C>, <C>description</C>, <C>category</C></>, 'Shown in the catalog and in search_paid_apis. description = one-line summary, max 500.'],
+                  [<C key="c">docs</C>, 'Markdown, max 20,000 chars. Rendered on the catalog page; agents read it with get_api_docs.'],
                 ]}
               />
             ),
@@ -1010,6 +1015,75 @@ curl -X POST ${API}/endpoints \\
                   <>Manage with <C>GET /endpoints</C>, <C>PATCH /endpoints/:id</C>, <C>DELETE /endpoints/:id</C>.</>,
                 ]}
               />
+            ),
+          },
+          {
+            id: 'self-hosted',
+            title: 'Self-hosted listing',
+            body: (
+              <>
+                <P>
+                  Your server answers 402 itself via <C>@paycall-live/middleware</C> and your seller key. Agents call <C>baseUrl + path</C> directly; PayCall never proxies it
+                  (<C>/p/&lt;id&gt;</C> is 404). Send <C>mode: &quot;hosted&quot;</C>, an HTTPS <C>baseUrl</C> and up to 50 <C>routes</C>:
+                </P>
+                <Pre>{`
+curl -X POST ${API}/endpoints \\
+  -H "authorization: Bearer $PAYCALL_KEY" -H "content-type: application/json" \\
+  -d '{
+    "mode": "hosted",
+    "name": "Acme Weather",
+    "baseUrl": "https://api.acme.dev",
+    "docs": "# Acme Weather\\n...",
+    "routes": [
+      { "method": "GET", "path": "/forecast", "price": 5000, "description": "7 day forecast" },
+      { "method": "GET", "path": "/alerts/:region", "price": 10000, "example": "/alerts/us-ca" }
+    ]
+  }'`}</Pre>
+                <Tbl
+                  head={['Route field', 'Notes']}
+                  rows={[
+                    [<C key="c">method</C>, <>GET | POST | PUT | PATCH | DELETE (default GET).</>],
+                    [<C key="c">path</C>, <>Starts with <C>/</C>. <C>:param</C> segments allowed.</>],
+                    [<><C>price</C>, <C>pricing</C>, <C>maxAmount</C>, <C>passSeconds</C></>, 'Same as proxy. Informational: your middleware sets the real price.'],
+                    [<C key="c">example</C>, <>Real path for <C>:param</C> routes, e.g. <C>/alerts/us-ca</C>. Without it the route can&apos;t be checked.</>],
+                    [<C key="c">description</C>, 'What the route returns, max 300.'],
+                  ]}
+                />
+                <P>
+                  <b className="font-normal text-foreground">The check.</b> On create, on every update and on <C>POST /endpoints/:id/probe</C>, PayCall calls each route (its method, no payment, no auth headers, 5 s timeout,
+                  redirects not followed) and expects <C>402</C> with a <C>PAYMENT-REQUIRED</C> header offering <C>paycall-prepaid</C> with <C>payTo</C> = your seller id. Each route stores{' '}
+                  <C>{'probe: { ok, checkedAt, error? }'}</C>. Only passing routes appear in the catalog and in <C>search_paid_apis</C>; free routes are simply not listed.
+                </P>
+              </>
+            ),
+          },
+          {
+            id: 'manifest',
+            title: 'Manifest (paycall.json)',
+            body: (
+              <>
+                <P>
+                  Keep the listing in your repo: <b className="font-normal text-foreground">New listing → Import from files</b> takes a <C>paycall.json</C> and an optional <C>README.md</C> (becomes the docs)
+                  and fills the form for review. One listing per file, same fields as <C>POST /endpoints</C>, but prices are dollar strings.
+                </P>
+                <Pre title="paycall.json">{`
+{
+  "mode": "hosted",
+  "name": "Acme Weather",
+  "category": "weather",
+  "description": "Forecasts and alerts by city",
+  "baseUrl": "https://api.acme.dev",
+  "routes": [
+    { "method": "GET", "path": "/forecast", "price": "0.005", "description": "7 day forecast, ?city=" },
+    { "method": "GET", "path": "/alerts/:region", "price": "0.01", "example": "/alerts/us-ca" },
+    { "method": "POST", "path": "/summarize", "price": "0.00002", "pricing": "token", "maxAmount": "0.05" }
+  ]
+}`}</Pre>
+                <P>
+                  Proxy manifest: <C>{'{ "name", "upstreamUrl", "price": "0.01", "pricing": "call" }'}</C>. <C>POST /endpoints/import</C> validates a manifest and returns the create body (micros), saving nothing;
+                  errors name the field, e.g. <C>routes.0.price: dollars as a string, e.g. &quot;0.005&quot;</C>.
+                </P>
+              </>
             ),
           },
           {
@@ -1139,7 +1213,8 @@ curl -X POST ${API}/endpoints \\
                   [<C key="c">GET /channels/:pubkey/:sellerId</C>, 'public', <><C>{'{ channelId, seq, cumulative }'}</C> or 404 <C>no_channel</C>.</>],
                   [<C key="c">GET /.well-known/jwks.json</C>, 'public', 'Receipt signing keys.'],
                   [<C key="c">ANY /p/:endpointId/*</C>, 'x402', 'The paid proxy.'],
-                  [<C key="c">GET /catalog?q=</C>, 'public', 'Up to 50 listings, verified first.'],
+                  [<C key="c">GET /catalog?q=</C>, 'public', 'Up to 50 listings, verified first. Hosted: live routes with direct URLs.'],
+                  [<C key="c">GET /catalog/:id</C>, 'public', 'One listing + markdown docs.'],
                 ]}
               />
             ),
@@ -1177,7 +1252,9 @@ curl -X POST ${API}/endpoints \\
                   [<C key="c">POST /sellers/me/key</C>, 'Rotate the API key. The old key stops working now.'],
                   [<C key="c">POST /endpoints</C>, <A key="a" href="/docs/guides/list-an-api#fields">Create a listing</A>],
                   [<C key="c">GET /endpoints</C>, 'Your listings (secrets never returned, only hasAuth).'],
-                  [<C key="c">PATCH /endpoints/:id</C>, 'Partial update. upstreamHeaders: object = replace, null = clear.'],
+                  [<C key="c">PATCH /endpoints/:id</C>, 'Partial update. upstreamHeaders: object = replace, null = clear. Hosted: routes replaced + re-probed.'],
+                  [<C key="c">POST /endpoints/:id/probe</C>, 'Re-check hosted routes.'],
+                  [<C key="c">POST /endpoints/import</C>, <A key="a" href="/docs/guides/list-an-api#manifest">Validate a paycall.json</A>],
                   [<C key="c">DELETE /endpoints/:id</C>, 'Delete a listing.'],
                   [<C key="c">POST /entries/:id/refund</C>, <C key="b">{`{ amount? }`}</C>],
                   [<C key="c">POST /disputes/:id</C>, <C key="b">{`{ action, reply? }`}</C>],
