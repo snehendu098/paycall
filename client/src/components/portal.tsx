@@ -247,9 +247,10 @@ export function PortalNav() {
             )
           })}
         </nav>
-        <Link href="/" className="self-center text-lg tracking-tight">PayCall</Link>
+        <Link href="/" className="hidden self-center text-lg tracking-tight sm:block">PayCall</Link>
+        <span className="sm:hidden" />
         <div className="flex items-center justify-end gap-4">
-          <Link href="/docs" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Docs</Link>
+          <Link href="/docs" className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline">Docs</Link>
           <DropdownMenu>
             <DropdownMenuTrigger
               className="group flex h-8 max-w-full items-center gap-2.5 border border-foreground/30 px-1 text-[13px] outline-none transition-colors hover:border-foreground focus-visible:border-foreground data-[state=open]:border-foreground sm:pr-3"
@@ -264,6 +265,7 @@ export function PortalNav() {
                 <span className="mt-1 block truncate text-[13px] text-foreground">{user?.email}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="mx-0 my-0" />
+              <DropdownMenuItem onSelect={() => router.push('/docs')} className="cursor-pointer px-3 py-2.5 text-[13px] sm:hidden">Docs</DropdownMenuItem>
               <DropdownMenuItem onSelect={signOut} className="cursor-pointer px-3 py-2.5 text-[13px]">
                 Sign out
                 <span aria-hidden className="ml-auto font-mono text-muted-foreground">→</span>
