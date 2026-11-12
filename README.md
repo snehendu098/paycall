@@ -32,7 +32,7 @@ agent ◀── 200 + PAYMENT-RESPONSE ─────────────�
 | Time pass | One payment buys N seconds of free calls. Afterwards the agent proves identity with a signed `PAYCALL-AGENT` header: single-use nonce, 5 min window, bound to method and URL. |
 | Dynamic pricing | Middleware takes `price: (req) => '0.05'`, plus `metered: true`. The handler sets `x-paycall-charge` and the rest is refunded. |
 | Signed receipts | Compact JWS (EdDSA) in `PAYMENT-RESPONSE.receipt`. Verify it against `/.well-known/jwks.json` with `verifyReceipt()` in the SDK. |
-| Refunds and disputes | Sellers can refund any charge. Buyers can dispute a charge within 7 days; open disputes are held back from payouts until the seller refunds or rejects. |
+| Refunds and disputes | Sellers can refund any charge. Buyers can dispute a charge within 7 days. The seller has 3 days to refund or reject with a reason; no answer means an automatic refund. A rejection can be escalated to PayCall once (within 3 days), and PayCall's decision is final. The amount is held from payouts until it's decided. |
 | Idempotency | Re-sending the same voucher returns the original settlement instead of charging twice. The proxy replays the cached response (1 h, ≤ 512 KB). |
 | Verified listings | Listings checked by an admin get a verified mark in the catalog and in MCP. |
 
