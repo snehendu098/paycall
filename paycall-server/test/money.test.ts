@@ -2,8 +2,8 @@
 import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { connect } from '../src/db'
-import { agents, channels, entries, owners, payoutBatches, payoutItems, sellers, topups } from '../src/db/schema'
-import { heldOf, openDispute, refund, refundedOf, resolveDispute, spentToday } from '../src/ledger'
+import { agents, channels, disputes, entries, owners, payoutBatches, payoutItems, sellers, topups } from '../src/db/schema'
+import { decideDispute, escalateDispute, expireDisputes, heldOf, openDispute, refund, refundedOf, spentToday } from '../src/ledger'
 import { b64url } from '../src/lib/util'
 import { signVoucher } from '../src/lib/voucher'
 import { applyPayoutItem } from '../src/payouts'
@@ -77,15 +77,52 @@ test('disputes: open holds, reject releases, refund pays back; window + dup guar
   expect(await openDispute(db, 'own_1', c.entryId, 'again')).toMatchObject({ ok: false, reason: 'already_disputed' })
   const held = async () => (await db.select({ h: heldOf('sel_1') }).from(sellers))[0]!.h
   expect(await held()).toBe(PRICE)
-  expect(await resolveDispute(db, 'sel_x', d.dispute.id, 'refund')).toMatchObject({ ok: false })
-  expect(await resolveDispute(db, 'sel_1', d.dispute.id, 'refund')).toMatchObject({ ok: true })
+  expect(await decideDispute(db, d.dispute.id, { seller: 'sel_x' }, 'refund')).toMatchObject({ ok: false })
+  expect(await decideDispute(db, d.dispute.id, { seller: 'sel_1' }, 'refund')).toMatchObject({ ok: true })
   expect(await held()).toBe(0)
   expect(await balance()).toBe(25_000)
-  expect(await resolveDispute(db, 'sel_1', d.dispute.id, 'reject')).toMatchObject({ ok: false }) // already resolved
+  expect(await decideDispute(db, d.dispute.id, { seller: 'sel_1' }, 'reject', 'no')).toMatchObject({ ok: false }) // already resolved
 
   const c2 = (await pay(2, 2 * PRICE)) as { entryId: number }
   await db.update(entries).set({ createdAt: new Date(Date.now() - 8 * 86_400_000) }).where(eq(entries.id, c2.entryId))
   expect(await openDispute(db, 'own_1', c2.entryId, 'late')).toMatchObject({ ok: false, reason: 'dispute_window_closed' })
+})
+
+test('disputes: seller silence auto-refunds; reject → escalate once → admin final', async () => {
+  const held = async () => (await db.select({ h: heldOf('sel_1') }).from(sellers))[0]!.h
+  type D = { ok: true; dispute: { id: number } }
+  // seller ignores it for 3 days → cron refunds
+  const c1 = (await pay(1, PRICE)) as { entryId: number }
+  const d1 = (await openDispute(db, 'own_1', c1.entryId, 'empty body')) as D
+  await expireDisputes(db)
+  expect((await db.select().from(disputes).where(eq(disputes.id, d1.dispute.id)))[0]!.status).toBe('open') // not late yet
+  await db.update(disputes).set({ createdAt: new Date(Date.now() - 4 * 86_400_000) }).where(eq(disputes.id, d1.dispute.id))
+  await expireDisputes(db)
+  expect((await db.select().from(disputes).where(eq(disputes.id, d1.dispute.id)))[0]).toMatchObject({ status: 'refunded', decidedBy: 'timeout' })
+  expect(await balance()).toBe(25_000)
+
+  // seller rejects → still held while escalatable; buyer escalates once; admin refunds
+  const c2 = (await pay(2, 2 * PRICE)) as { entryId: number }
+  const d2 = (await openDispute(db, 'own_1', c2.entryId, 'wrong data')) as D
+  expect(await escalateDispute(db, 'own_1', d2.dispute.id)).toMatchObject({ ok: false }) // seller hasn't answered
+  expect(await decideDispute(db, d2.dispute.id, 'admin', 'refund')).toMatchObject({ ok: false }) // admin only on escalated
+  expect(await decideDispute(db, d2.dispute.id, { seller: 'sel_1' }, 'reject', 'data was correct')).toMatchObject({ ok: true })
+  expect(await held()).toBe(PRICE)
+  expect(await escalateDispute(db, 'own_x', d2.dispute.id)).toMatchObject({ ok: false })
+  expect(await escalateDispute(db, 'own_1', d2.dispute.id)).toMatchObject({ ok: true, dispute: { status: 'escalated' } })
+  expect(await escalateDispute(db, 'own_1', d2.dispute.id)).toMatchObject({ ok: false }) // once
+  expect(await decideDispute(db, d2.dispute.id, { seller: 'sel_1' }, 'reject', 'again')).toMatchObject({ ok: false }) // out of seller hands
+  expect(await decideDispute(db, d2.dispute.id, 'admin', 'refund', 'upstream returned stale data')).toMatchObject({ ok: true, dispute: { decidedBy: 'admin' } })
+  expect(await held()).toBe(0)
+  expect(await balance()).toBe(25_000)
+
+  // seller reject not escalated in time → hold released, can't escalate
+  const c3 = (await pay(3, 3 * PRICE)) as { entryId: number }
+  const d3 = (await openDispute(db, 'own_1', c3.entryId, 'meh')) as D
+  await decideDispute(db, d3.dispute.id, { seller: 'sel_1' }, 'reject', 'works fine')
+  await db.update(disputes).set({ resolvedAt: new Date(Date.now() - 4 * 86_400_000) }).where(eq(disputes.id, d3.dispute.id))
+  expect(await held()).toBe(0)
+  expect(await escalateDispute(db, 'own_1', d3.dispute.id)).toMatchObject({ ok: false, reason: 'not_escalatable' })
 })
 
 test('parallel double-spend → exactly one wins', async () => {

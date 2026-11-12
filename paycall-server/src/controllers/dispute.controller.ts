@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, type SQL } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import { disputes, entries } from '../db/schema'
 import { factory } from '../lib/factory'
-import { openDispute, refund, resolveDispute } from '../ledger'
+import { decideDispute, escalateDispute, openDispute, refund } from '../ledger'
 import { zMicros } from '../lib/util'
 
 const id = (c: { req: { param: (k: string) => string | undefined } }) => {
@@ -27,18 +27,37 @@ export const dispute = factory.createHandlers(zValidator('json', z.object({ reas
   c.json(out(await openDispute(c.var.db, c.var.principal.id, id(c), c.req.valid('json').reason)).dispute, 201),
 )
 
-export const list = factory.createHandlers(async (c) => {
-  const { role, id: me } = c.var.principal
-  const rows = await c.var.db
+const rows = (db: Parameters<typeof decideDispute>[0], where: SQL) =>
+  db
     .select({ dispute: disputes, resource: entries.resource, chargedAt: entries.createdAt })
     .from(disputes)
     .innerJoin(entries, eq(entries.id, disputes.entryId))
-    .where(eq(role === 'owner' ? disputes.ownerId : disputes.sellerId, me))
+    .where(where)
     .orderBy(desc(disputes.id))
     .limit(100)
-  return c.json(rows.map((r) => ({ ...r.dispute, resource: r.resource, chargedAt: r.chargedAt })))
+    .then((r) => r.map((x) => ({ ...x.dispute, resource: x.resource, chargedAt: x.chargedAt })))
+
+export const list = factory.createHandlers(async (c) => {
+  const { role, id: me } = c.var.principal
+  return c.json(await rows(c.var.db, eq(role === 'owner' ? disputes.ownerId : disputes.sellerId, me)))
 })
 
-export const resolve = factory.createHandlers(zValidator('json', z.object({ action: z.enum(['refund', 'reject']) })), async (c) =>
-  c.json(out(await resolveDispute(c.var.db, c.var.principal.id, id(c), c.req.valid('json').action)).dispute),
-)
+// reject needs a reason the buyer sees (and PayCall, if escalated)
+const Decide = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('refund'), reply: z.string().trim().max(500).optional() }),
+  z.object({ action: z.literal('reject'), reply: z.string().trim().min(3).max(500) }),
+])
+
+export const resolve = factory.createHandlers(zValidator('json', Decide), async (c) => {
+  const { action, reply } = c.req.valid('json')
+  return c.json(out(await decideDispute(c.var.db, id(c), { seller: c.var.principal.id }, action, reply)).dispute)
+})
+
+export const escalate = factory.createHandlers(async (c) => c.json(out(await escalateDispute(c.var.db, c.var.principal.id, id(c))).dispute))
+
+// admin (PayCall) queue + final call
+export const escalated = factory.createHandlers(async (c) => c.json(await rows(c.var.db, eq(disputes.status, 'escalated'))))
+export const adminDecide = factory.createHandlers(zValidator('json', z.object({ action: z.enum(['refund', 'reject']), reply: z.string().trim().max(500).optional() })), async (c) => {
+  const { action, reply } = c.req.valid('json')
+  return c.json(out(await decideDispute(c.var.db, id(c), 'admin', action, reply)).dispute)
+})

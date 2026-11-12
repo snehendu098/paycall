@@ -50,6 +50,13 @@
       "when": 1794383173916,
       "tag": "0006_tough_unicorn",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794496289898,
+      "tag": "0007_equal_namorita",
+      "breakpoints": true
     }
   ]
 }

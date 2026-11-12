@@ -1,10 +1,13 @@
 // refunds + disputes. one primitive: refund entry = money back to buyer, out of seller earnings.
 // voucher/channel math never changes; payouts subtract refunds and open disputes (payouts.ts owed)
-import { and, eq, gte, inArray, sql, type AnyColumn } from 'drizzle-orm'
+import { and, eq, gt, gte, inArray, isNull, lt, sql, type AnyColumn } from 'drizzle-orm'
 import type { DB } from './db'
 import { disputes, entries, owners } from './db/schema'
 
 export const DISPUTE_WINDOW_DAYS = 7
+export const RESPOND_DAYS = 3 // seller silent this long → auto-refund
+export const ESCALATE_DAYS = 3 // buyer can escalate a seller reject this long
+const ago = (days: number) => sql`now() - make_interval(days => ${days})`
 type Tx = Parameters<Parameters<DB['transaction']>[0]>[0]
 type Fail = { ok: false; reason: string }
 const fail = (reason: string): Fail => ({ ok: false, reason })
@@ -13,7 +16,7 @@ const fail = (reason: string): Fail => ({ ok: false, reason })
 export const refundedOf = (sellerId: AnyColumn | string) =>
   sql<number>`(select coalesce(sum(amount), 0) from entries where seller_id = ${sellerId} and type = 'refund')`.mapWith(Number)
 export const heldOf = (sellerId: AnyColumn | string) =>
-  sql<number>`(select coalesce(sum(amount), 0) from disputes where seller_id = ${sellerId} and status = 'open')`.mapWith(Number)
+  sql<number>`(select coalesce(sum(amount), 0) from disputes where seller_id = ${sellerId} and (status in ('open', 'escalated') or (status = 'rejected' and decided_by = 'seller' and resolved_at > ${ago(ESCALATE_DAYS)})))`.mapWith(Number)
 // charge +, refund −
 export const netAmount = sql<number>`coalesce(sum(case when ${entries.type} = 'charge' then ${entries.amount} else -${entries.amount} end), 0)`.mapWith(Number)
 
@@ -85,20 +88,42 @@ export async function openDispute(db: DB, ownerId: string, chargeId: number, rea
   })
 }
 
-// seller decides: refund (money back) or reject (hold released)
-export async function resolveDispute(db: DB, sellerId: string, id: number, action: 'refund' | 'reject') {
+type By = { seller: string } | 'admin' | 'timeout'
+
+// seller decides open ones, admin decides escalated ones (final), cron refunds open ones the seller ignored
+export async function decideDispute(db: DB, id: number, by: By, action: 'refund' | 'reject', reply?: string) {
+  const who =
+    by === 'admin' ? eq(disputes.status, 'escalated')
+    : by === 'timeout' ? and(eq(disputes.status, 'open'), lt(disputes.createdAt, ago(RESPOND_DAYS)))
+    : and(eq(disputes.status, 'open'), eq(disputes.sellerId, by.seller))
   return db.transaction(async (tx) => {
     const [d] = await tx
       .update(disputes)
-      .set({ status: action === 'refund' ? 'refunded' : 'rejected', resolvedAt: new Date() })
-      .where(and(eq(disputes.id, id), eq(disputes.sellerId, sellerId), eq(disputes.status, 'open')))
+      .set({ status: action === 'refund' ? 'refunded' : 'rejected', resolvedAt: new Date(), decidedBy: typeof by === 'string' ? by : 'seller', ...(reply && { reply }) })
+      .where(and(eq(disputes.id, id), who))
       .returning()
     if (!d) return fail('unknown_dispute')
     if (action === 'refund') {
-      const r = await refundIn(tx, d.entryId, sellerId, 'rest', `dispute:${d.id}`)
+      const r = await refundIn(tx, d.entryId, d.sellerId, 'rest', `dispute:${d.id}`)
       // already fully refunded since opening → nothing left to give back, still resolved
       if (!r.ok && r.reason !== 'already_refunded') throw new Error(r.reason)
     }
     return { ok: true as const, dispute: d }
   })
+}
+
+// buyer appeals a seller reject once → PayCall admin decides
+export async function escalateDispute(db: DB, ownerId: string, id: number) {
+  const [d] = await db
+    .update(disputes)
+    .set({ status: 'escalated', escalatedAt: new Date(), resolvedAt: null })
+    .where(and(eq(disputes.id, id), eq(disputes.ownerId, ownerId), eq(disputes.status, 'rejected'), eq(disputes.decidedBy, 'seller'), isNull(disputes.escalatedAt), gt(disputes.resolvedAt, ago(ESCALATE_DAYS))))
+    .returning()
+  return d ? { ok: true as const, dispute: d } : fail('not_escalatable')
+}
+
+// cron: seller silence = buyer wins
+export async function expireDisputes(db: DB) {
+  const late = await db.select({ id: disputes.id }).from(disputes).where(and(eq(disputes.status, 'open'), lt(disputes.createdAt, ago(RESPOND_DAYS))))
+  for (const { id } of late) await decideDispute(db, id, 'timeout', 'refund')
 }
