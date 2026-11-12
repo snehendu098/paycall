@@ -58,7 +58,7 @@ function Queue({ list }: { list?: AdminDispute[] }) {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm" title={d.resource ?? undefined}>{d.endpoint ?? pathOf(d.resource)}</div>
                   <div className="mt-0.5 truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                    {d.ownerEmail} · {d.seller}{d.escalatedAt && <> · <span className="text-live">escalated {ago(d.escalatedAt)}</span></>}
+                    {d.escalatedAt && <><span className="text-live">escalated {ago(d.escalatedAt)}</span> · </>}{d.ownerEmail} · {d.seller}
                   </div>
                 </div>
                 <span className="shrink-0 font-mono text-sm tabular-nums">{$(d.amount)}</span>
